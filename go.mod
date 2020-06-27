@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/emicklei/go-restful v0.0.0-20170410110728-ff4f55a20633
-	github.com/ettec/otp-model v0.0.2-0.20200622133905-83ff4feead0c // indirect
+	github.com/ettec/otp-model v0.0.2-0.20200627105317-ed67f7c52141
 	github.com/golang/protobuf v1.4.0
 	github.com/google/uuid v1.1.1
 	github.com/prometheus/client_golang v1.6.0

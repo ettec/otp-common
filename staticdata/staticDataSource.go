@@ -2,8 +2,10 @@ package staticdata
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	services "github.com/ettec/otp-common/api/staticdataservice"
+	"github.com/ettec/otp-common/k8s"
 	"github.com/ettec/otp-model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -11,7 +13,10 @@ import (
 	"google.golang.org/grpc/status"
 	"log"
 	"os"
+	"strconv"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type SubscriptionHandler interface {
@@ -41,7 +46,39 @@ type GrpcConnection interface {
 
 type GetStaticDataServiceClientFn = func() (services.StaticDataServiceClient, GrpcConnection, error)
 
-func NewStaticDataSource(targetAddress string) (*listingSource, error) {
+func NewStaticDataSource(external bool) (*listingSource, error) {
+
+	clientSet := k8s.GetK8sClientSet(external)
+
+	namespace := "default"
+	sdsLabelSelector := "app=static-data-service"
+	list, err := clientSet.CoreV1().Services(namespace).List(metav1.ListOptions{
+		LabelSelector: sdsLabelSelector,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(list.Items) != 1 {
+		return nil, fmt.Errorf("expected to find only one service for label selector: %v", sdsLabelSelector)
+	}
+
+	service := list.Items[0]
+
+	var podPort int32
+	for _, port := range service.Spec.Ports {
+		if port.Name == "api" {
+			podPort = port.Port
+		}
+	}
+
+	if podPort == 0 {
+		return nil, errors.New("api port not found on static data service")
+	}
+
+	targetAddress := service.Name + ":" + strconv.Itoa(int(podPort))
+
 	return newStaticDataSource(func() (client services.StaticDataServiceClient, connection GrpcConnection, err error) {
 		log.Println("connecting to static data service at:" + targetAddress)
 		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(120*time.Second))

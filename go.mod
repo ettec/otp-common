@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.6.0
 	github.com/segmentio/kafka-go v0.3.4
 	google.golang.org/grpc v1.25.1
+	k8s.io/apimachinery v0.17.4
 	k8s.io/client-go v0.17.4
 	k8s.io/klog v1.0.0
 )

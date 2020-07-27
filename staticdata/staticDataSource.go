@@ -6,7 +6,7 @@ import (
 	"fmt"
 	services "github.com/ettec/otp-common/api/staticdataservice"
 	"github.com/ettec/otp-common/k8s"
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"

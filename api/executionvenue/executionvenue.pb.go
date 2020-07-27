@@ -4,7 +4,7 @@
 package executionvenue
 
 import (
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 	context "context"
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"

@@ -1,7 +1,7 @@
 package marketdata
 
 import (
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 	"testing"
 	"time"
 )

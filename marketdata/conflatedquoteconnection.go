@@ -2,7 +2,7 @@ package marketdata
 
 import (
 	"fmt"
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 	"log"
 	"os"
 )

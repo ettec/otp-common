@@ -3,7 +3,7 @@ package marketdata
 import (
 	"context"
 	"github.com/ettec/otp-common/api/marketdatasource"
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"time"

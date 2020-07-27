@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ettec/otp-common/api/marketdatasource"
-	"github.com/ettec/otp-model"
+	"github.com/ettec/otp-common/model"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"

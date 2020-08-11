@@ -44,6 +44,8 @@ func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRout
 
 	err := initialState.SetTargetStatus(model.OrderStatus_LIVE)
 
+	initialState.ExecParametersJson = params.ExecParametersJson
+
 	if err != nil {
 		return nil, err
 	}
@@ -258,4 +260,3 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 
 	return client, nil
 }
-

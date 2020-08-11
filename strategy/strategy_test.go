@@ -193,6 +193,7 @@ func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
 
 }
 
+
 func TestStrategyCompletesWhenChildOrdersFilled(t *testing.T) {
 
 	parentOrderUpdatesChan, _, _, childOrdersIn, _,

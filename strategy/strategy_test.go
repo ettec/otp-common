@@ -108,7 +108,8 @@ func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
 		OrderSide:     model.Side_BUY,
 		Quantity:      model.IasD(10),
 		Price:         model.IasD(200),
-		Listing:       listing,
+		ListingId:     listing.Id,
+		Destination:   listing.Market.Mic,
 		OriginatorId:  om.ExecVenueId,
 		OriginatorRef: om.ParentOrder.Id,
 	}
@@ -193,7 +194,6 @@ func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
 
 }
 
-
 func TestStrategyCompletesWhenChildOrdersFilled(t *testing.T) {
 
 	parentOrderUpdatesChan, _, _, childOrdersIn, _,
@@ -261,7 +261,8 @@ func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan ch
 		OrderSide:     model.Side_BUY,
 		Quantity:      model.IasD(60),
 		Price:         model.IasD(200),
-		Listing:       listing,
+		ListingId:     listing.Id,
+		Destination:   listing.Market.Mic,
 		OriginatorId:  om.ExecVenueId,
 		OriginatorRef: om.ParentOrder.Id,
 	}
@@ -280,7 +281,8 @@ func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan ch
 		OrderSide:     model.Side_BUY,
 		Quantity:      model.IasD(40),
 		Price:         model.IasD(200),
-		Listing:       listing,
+		ListingId:     listing.Id,
+		Destination:   listing.Market.Mic,
 		OriginatorId:  om.ExecVenueId,
 		OriginatorRef: om.ParentOrder.Id,
 	}
@@ -340,6 +342,7 @@ func setupStrategy() (parentOrderUpdatesChan chan model.Order, childOrderOutboun
 	listing = &model.Listing{
 		Version: 0,
 		Id:      1,
+		Market: &model.Market{Mic:"XNAS"},
 	}
 
 	parentOrderUpdatesChan = make(chan model.Order)
@@ -360,7 +363,8 @@ func setupStrategy() (parentOrderUpdatesChan chan model.Order, childOrderOutboun
 		OrderSide:          model.Side_BUY,
 		Quantity:           &model.Decimal64{Mantissa: 100},
 		Price:              &model.Decimal64{Mantissa: 200},
-		Listing:            listing,
+		ListingId:            listing.Id,
+		Destination:        listing.Market.Mic,
 		OriginatorId:       "",
 		OriginatorRef:      "",
 		RootOriginatorId:   "",
@@ -422,7 +426,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 }
 
 func areParamsEqual(p1 *api.CreateAndRouteOrderParams, p2 *api.CreateAndRouteOrderParams) bool {
-	return p1.Quantity.Equal(p2.Quantity) && p1.Listing.Id == p2.Listing.Id && p1.Price.Equal(p2.Price) && p1.OrderSide == p2.OrderSide &&
+	return p1.Quantity.Equal(p2.Quantity) && p1.ListingId == p2.ListingId && p1.Price.Equal(p2.Price) && p1.OrderSide == p2.OrderSide &&
 		p1.OriginatorRef == p2.OriginatorRef && p1.OriginatorId == p2.OriginatorId
 
 }

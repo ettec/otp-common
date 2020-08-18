@@ -39,7 +39,7 @@ func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRout
 	store func(*model.Order) error, orderRouter api.ExecutionVenueClient,
 	childOrderStream executionvenue.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
 
-	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.Listing.Id,
+	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
 		params.OriginatorId, params.OriginatorRef, params.RootOriginatorId, params.RootOriginatorRef)
 
 	err := initialState.SetTargetStatus(model.OrderStatus_LIVE)
@@ -58,7 +58,7 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 	po := executionvenue.NewParentOrder(*initialState)
 	return &Strategy{
 		lastStoredOrder:      nil,
-		CancelChan:           make(chan string, 1),
+		CancelChan:           make(chan string, 10),
 		store:                store,
 		ParentOrder:          po,
 		ExecVenueId:          execVenueId,
@@ -129,7 +129,8 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 		OrderSide:         side,
 		Quantity:          quantity,
 		Price:             price,
-		Listing:           listing,
+		ListingId:         listing.Id,
+		Destination:       listing.Market.Mic,
 		OriginatorId:      om.ExecVenueId,
 		OriginatorRef:     om.GetParentOrderId(),
 		RootOriginatorId:  om.ParentOrder.RootOriginatorId,
@@ -142,7 +143,7 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 		return fmt.Errorf("failed to submit child order:%w", err)
 	}
 
-	pendingOrder := model.NewOrder(id.OrderId, params.OrderSide, params.Quantity, params.Price, params.Listing.GetId(),
+	pendingOrder := model.NewOrder(id.OrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
 		om.ExecVenueId, om.GetParentOrderId(), om.ParentOrder.RootOriginatorId, om.ParentOrder.RootOriginatorRef)
 
 	// First persisted orders start at version 0, this is a placeholder until the first child order update is received
@@ -211,6 +212,7 @@ func (om *Strategy) persistParentOrderChanges() error {
 }
 
 func (om *Strategy) CancelOrderWithErrorMsg(msg string) {
+	om.Log.Printf("Cancelling order:%v", msg)
 	om.CancelChan <- msg
 }
 

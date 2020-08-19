@@ -94,7 +94,8 @@ func (om *Strategy) CancelParentOrder(listingSource func(int32) *model.Listing) 
 				pendingChildOrderCancels = true
 				_, err := om.orderRouter.CancelOrder(context.Background(), &api.CancelOrderParams{
 					OrderId: co.Id,
-					Listing: listingSource(co.ListingId),
+					ListingId: co.ListingId,
+					OwnerId: co.OwnerId,
 				})
 
 				if err != nil {

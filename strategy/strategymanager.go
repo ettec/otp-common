@@ -109,7 +109,7 @@ func (s *strategyManager) ModifyOrder(ctx context.Context, params *api.ModifyOrd
 func (s *strategyManager) CancelOrder(ctx context.Context, params *api.CancelOrderParams) (*model.Empty, error) {
 
 	if val, exists := s.orders.Load(params.OrderId); exists {
-		om := val.(Strategy)
+		om := val.(*Strategy)
 		om.Cancel()
 		return &model.Empty{}, nil
 	} else {

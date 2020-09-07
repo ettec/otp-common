@@ -2,13 +2,13 @@ package marketdata
 
 import (
 	"fmt"
-	"github.com/emicklei/go-restful/log"
 	"github.com/ettec/otp-common/api/marketdatasource"
 	"github.com/ettec/otp-common/model"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc/metadata"
+	"log"
 )
 
 var connections = promauto.NewGauge(prometheus.GaugeOpts{

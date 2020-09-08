@@ -147,10 +147,12 @@ func NewMdsQuoteStreamFromFn(id string, targetAddress string, out chan *model.Cl
 		for {
 
 			state := conn.GetState()
+			var retryWait int64 = 1
 			for state != connectivity.Ready {
 				n.log.Printf("waiting for market data source connection to be ready....")
-
 				conn.WaitForStateChange(context.Background(), state)
+				time.Sleep(time.Duration(retryWait)* time.Second)
+				retryWait = retryWait * 2
 				state = conn.GetState()
 				n.log.Println("market data source connection state is:", state)
 			}

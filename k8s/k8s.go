@@ -2,7 +2,9 @@ package k8s
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -12,7 +14,43 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 )
+
+func GetServiceAddress( appLabel string) (string, error) {
+	clientSet := GetK8sClientSet(false)
+
+	namespace := "default"
+	sdsLabelSelector := "app=" + appLabel
+	list, err := clientSet.CoreV1().Services(namespace).List(metav1.ListOptions{
+		LabelSelector: sdsLabelSelector,
+	})
+
+	if err != nil {
+		return "",  err
+	}
+
+	if len(list.Items) != 1 {
+		return "", fmt.Errorf("expected to find only one service for label selector: %v", sdsLabelSelector)
+	}
+
+	service := list.Items[0]
+
+	var podPort int32
+	for _, port := range service.Spec.Ports {
+		if port.Name == "api" {
+			podPort = port.Port
+		}
+	}
+
+	if podPort == 0 {
+		return "", fmt.Errorf("api port not found on service for selector label: %v", sdsLabelSelector)
+	}
+
+	targetAddress := service.Name + ":" + strconv.Itoa(int(podPort))
+	return targetAddress,  nil
+}
+
 
 func GetK8sClientSet(external bool) *kubernetes.Clientset {
 	var clientSet *kubernetes.Clientset

@@ -206,8 +206,9 @@ func setup(t *testing.T) (testClient, testClientStream, testConnection, *mdsQuot
 	}
 
 	c, err := NewMdsQuoteStreamFromFn("testId", "testTarget", out,
-		func(targetAddress string) (marketdatasource.MarketDataSourceClient, GrpcConnection, error) {
-			return client, conn, nil
+		func(targetAddress string) (commonMds, GrpcConnection, error) {
+
+			return &sourceToCommonMds{client:client}, conn, nil
 		})
 
 	if err != nil {

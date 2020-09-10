@@ -16,13 +16,13 @@ func GetBalancingOrdinal(listing *model.Listing, numStatefulServices int32) int 
 	return ordinal
 }
 
-type StatefulPodAddress struct {
-	targetAddress string
-	ordinal int
+type BalancingStatefulPod struct {
+	TargetAddress string
+	Ordinal       int
 }
 
-func GetMicToStatefulPodAddresses( serviceType string) (map[string][]StatefulPodAddress, error) {
-	micToTargetAddress := map[string][]StatefulPodAddress{}
+func GetMicToStatefulPodAddresses( serviceType string) (map[string][]BalancingStatefulPod, error) {
+	micToTargetAddress := map[string][]BalancingStatefulPod{}
 
 	clientSet := k8s.GetK8sClientSet(false)
 
@@ -52,7 +52,7 @@ func GetMicToStatefulPodAddresses( serviceType string) (map[string][]StatefulPod
 		}
 
 		ordinal, err := getStatefulSetPodOrdinal(pod)
-		micToTargetAddress[mic] = append(micToTargetAddress[mic], StatefulPodAddress{targetAddress: targetAddress, ordinal: ordinal})
+		micToTargetAddress[mic] = append(micToTargetAddress[mic], BalancingStatefulPod{TargetAddress: targetAddress, Ordinal: ordinal})
 	}
 	return micToTargetAddress, nil
 }

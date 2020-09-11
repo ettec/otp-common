@@ -81,7 +81,7 @@ func newStaticDataSource(getConnection GetStaticDataServiceClientFn) (*listingSo
 		for {
 			state := conn.GetState()
 			for state != connectivity.Ready {
-				s.log.Printf("waiting for static data service connection to be ready....")
+				s.log.Printf("connecting to static data service....")
 				conn.WaitForStateChange(context.Background(), state)
 				state = conn.GetState()
 				s.log.Println("static data service connection state is:", state)

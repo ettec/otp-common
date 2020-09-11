@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"github.com/emicklei/go-restful/log"
 	"github.com/ettec/otp-common/k8s"
-	"github.com/ettec/otp-common/model"
 	v12 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"strings"
 )
 
-func GetBalancingOrdinal(listing *model.Listing, numStatefulServices int32) int {
-	ordinal := int(listing.Id - (listing.Id/numStatefulServices)*numStatefulServices)
+func GetBalancingOrdinal(listingId int32, numStatefulServices int32) int {
+	ordinal := int(listingId - (listingId/numStatefulServices)*numStatefulServices)
 	return ordinal
 }
 
@@ -21,7 +20,7 @@ type BalancingStatefulPod struct {
 	Ordinal       int
 }
 
-func GetMicToStatefulPodAddresses( serviceType string) (map[string][]BalancingStatefulPod, error) {
+func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingStatefulPod, error) {
 	micToTargetAddress := map[string][]BalancingStatefulPod{}
 
 	clientSet := k8s.GetK8sClientSet(false)
@@ -60,7 +59,7 @@ func GetMicToStatefulPodAddresses( serviceType string) (map[string][]BalancingSt
 func getStatefulSetPodOrdinal(pod v12.Pod) (int, error) {
 	idx := strings.LastIndex(pod.Name, "-")
 	r := []rune(pod.Name)
-	podOrd := string(r[idx+1:len(pod.Name)])
+	podOrd := string(r[idx+1 : len(pod.Name)])
 	return strconv.Atoi(podOrd)
 }
 

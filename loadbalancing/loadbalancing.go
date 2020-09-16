@@ -56,7 +56,12 @@ func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingSta
 	return micToTargetAddress, nil
 }
 
+
 func getStatefulSetPodOrdinal(pod v12.Pod) (int, error) {
+	return GetStatefulSetPodOrdinalFromName(pod)
+}
+ 
+func GetStatefulSetPodOrdinalFromName(pod v12.Pod) (int, error) {
 	idx := strings.LastIndex(pod.Name, "-")
 	r := []rune(pod.Name)
 	podOrd := string(r[idx+1 : len(pod.Name)])

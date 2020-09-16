@@ -10,13 +10,13 @@ type OrderCache struct {
 	cache map[string]*model.Order
 }
 
-func NewOrderCache(store orderstore.OrderStore) (*OrderCache, error) {
+func NewOrderCache(store orderstore.OrderStore, loadOrder func(order *model.Order) bool) (*OrderCache, error) {
 	orderCache := OrderCache{
 		store: store,
 	}
 
 	var err error
-	orderCache.cache, err = store.RecoverInitialCache()
+	orderCache.cache, err = store.RecoverInitialCache(loadOrder)
 	if err != nil {
 		return nil, err
 	}

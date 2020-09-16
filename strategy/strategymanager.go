@@ -35,7 +35,7 @@ type strategyManager struct {
 }
 
 func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, childOrderUpdates ChildOrderUpdates,
-	orderRouter api.ExecutionVenueClient, executeFn func(om *Strategy)) *strategyManager {
+	orderRouter api.ExecutionVenueClient, executeFn func(om *Strategy), loadOrder func(order *model.Order) bool) *strategyManager {
 
 	sm := &strategyManager{
 		id:                id,
@@ -54,7 +54,7 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 		log.Printf("order %v done", id)
 	}()
 
-	parentOrders, err := sm.store.RecoverInitialCache()
+	parentOrders, err := sm.store.RecoverInitialCache(loadOrder)
 	if err != nil {
 		panic(err)
 	}

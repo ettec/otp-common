@@ -18,7 +18,7 @@ type KafkaStore struct {
 	writer          *kafka.Writer
 	topic           string
 	kafkaBrokerUrls []string
-	ownerId         string
+	ownerId string
 }
 
 type orderReader interface {
@@ -34,7 +34,7 @@ func NewKafkaStore(kafkaBrokerUrls []string, ownerId string) (*KafkaStore, error
 
 		topic:           topic,
 		kafkaBrokerUrls: kafkaBrokerUrls,
-		ownerId:         ownerId,
+		ownerId: ownerId,
 	}
 
 	result.writer = kafka.NewWriter(kafka.WriterConfig{
@@ -48,17 +48,13 @@ func NewKafkaStore(kafkaBrokerUrls []string, ownerId string) (*KafkaStore, error
 	return &result, nil
 }
 
-func (ks *KafkaStore) RecoverInitialCache() (map[string]*model.Order, error) {
+func (ks *KafkaStore) RecoverInitialCache( loadOrder func(order *model.Order) bool) (map[string]*model.Order, error) {
 
 	log.Println("restoring order state")
 	reader := ks.getNewReader()
 	defer reader.Close()
 
-	owns := func(order *model.Order) bool {
-		return ks.ownerId == order.GetOwnerId()
-	}
-
-	result, err := getInitialState(reader, owns)
+	result, err := getInitialState(reader, loadOrder)
 
 	if err != nil {
 		return nil, err

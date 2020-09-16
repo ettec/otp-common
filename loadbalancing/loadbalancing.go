@@ -58,13 +58,13 @@ func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingSta
 
 
 func getStatefulSetPodOrdinal(pod v12.Pod) (int, error) {
-	return GetStatefulSetPodOrdinalFromName(pod)
+	return GetStatefulSetPodOrdinalFromName(pod.Name)
 }
- 
-func GetStatefulSetPodOrdinalFromName(pod v12.Pod) (int, error) {
-	idx := strings.LastIndex(pod.Name, "-")
-	r := []rune(pod.Name)
-	podOrd := string(r[idx+1 : len(pod.Name)])
+
+func GetStatefulSetPodOrdinalFromName(podName string) (int, error) {
+	idx := strings.LastIndex(podName, "-")
+	r := []rune(podName)
+	podOrd := string(r[idx+1 : len(podName)])
 	return strconv.Atoi(podOrd)
 }
 

@@ -10,8 +10,6 @@ import (
 	"strings"
 )
 
-
-
 func GetBalancingOrdinal(listingId int32, numStatefulServices int32) int {
 	ordinal := int(listingId - (listingId/numStatefulServices)*numStatefulServices)
 	return ordinal
@@ -20,6 +18,7 @@ func GetBalancingOrdinal(listingId int32, numStatefulServices int32) int {
 type BalancingStatefulPod struct {
 	TargetAddress string
 	Ordinal       int
+	Name          string
 }
 
 func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingStatefulPod, error) {
@@ -53,11 +52,11 @@ func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingSta
 		}
 
 		ordinal, err := getStatefulSetPodOrdinal(pod)
-		micToTargetAddress[mic] = append(micToTargetAddress[mic], BalancingStatefulPod{TargetAddress: targetAddress, Ordinal: ordinal})
+		micToTargetAddress[mic] = append(micToTargetAddress[mic], BalancingStatefulPod{TargetAddress: targetAddress,
+			Ordinal: ordinal, Name: pod.Name})
 	}
 	return micToTargetAddress, nil
 }
-
 
 func getStatefulSetPodOrdinal(pod v12.Pod) (int, error) {
 	return GetStatefulSetPodOrdinalFromName(pod.Name)

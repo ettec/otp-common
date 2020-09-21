@@ -3,54 +3,12 @@ package loadbalancing
 import (
 	"fmt"
 	"github.com/emicklei/go-restful/log"
-	"github.com/ettec/otp-common/executionvenue"
 	"github.com/ettec/otp-common/k8s"
-	"github.com/ettec/otp-common/model"
-	"github.com/ettec/otp-common/orderstore"
 	v12 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"strings"
 )
-
-func NewLoadBalancedOrderCache( store orderstore.OrderStore, execVenueMic string, id string) (*executionvenue.OrderCache, error) {
-
-
-	podOrdinal, err := GetStatefulSetPodOrdinalFromName(id)
-	if err != nil {
-		return nil,fmt.Errorf("failed to get pod ordnial from pod name: %v", err)
-	}
-
-	micToBalancingPods, err := GetMicToStatefulPodAddresses("execution-venue")
-
-	if err != nil {
-		return nil,fmt.Errorf("failed to get execution venue balancing pods: %v", err)
-	}
-
-	var numVenuesForMic int32
-	if pods, ok := micToBalancingPods[execVenueMic]; ok {
-		numVenuesForMic = int32(len(pods))
-	} else {
-		return nil,fmt.Errorf("no execution venue balancing pods found for Mic:%v", execVenueMic)
-	}
-
-	loadOrder := func(order *model.Order) bool {
-
-		if execVenueMic == order.GetOwnerId() {
-			ordinal := GetBalancingOrdinal(order.ListingId, numVenuesForMic)
-			if ordinal == podOrdinal {
-				return true
-			}
-		}
-		return false
-	}
-
-	orderCache, err := executionvenue.NewOrderCache(store, loadOrder)
-	if err != nil {
-		return nil,fmt.Errorf("failed to create order cache:%v", err)
-	}
-	return orderCache, nil
-}
 
 
 

@@ -15,7 +15,7 @@ func IasD(i int) *model.Decimal64 {
 func Test_parentOrder_cancelled(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi",
-		"or", "ri", "rr"))
+		"or", "ri", "rr", "XNAS"))
 	po.SetTargetStatus(model.OrderStatus_LIVE)
 	po.SetStatus(model.OrderStatus_LIVE)
 
@@ -82,7 +82,7 @@ func Test_parentOrder_cancelled(t *testing.T) {
 func Test_parentOrder_childOrdersFilled(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi", "or", "ri",
-		"rr"))
+		"rr", "XNAS"))
 	po.SetStatus(model.OrderStatus_LIVE)
 
 	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
@@ -156,7 +156,7 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 func Test_parentOrder_recovery(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi", "or", "ri",
-		"rr"))
+		"rr", "XNAS"))
 	po.SetStatus(model.OrderStatus_LIVE)
 
 	preFailureUpdates := []*model.Order{

@@ -40,7 +40,7 @@ func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRout
 	childOrderStream executionvenue.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
 
 	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
-		params.OriginatorId, params.OriginatorRef, params.RootOriginatorId, params.RootOriginatorRef)
+		params.OriginatorId, params.OriginatorRef, params.RootOriginatorId, params.RootOriginatorRef, params.Destination)
 
 	err := initialState.SetTargetStatus(model.OrderStatus_LIVE)
 
@@ -145,7 +145,7 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 	}
 
 	pendingOrder := model.NewOrder(id.OrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
-		om.ExecVenueId, om.GetParentOrderId(), om.ParentOrder.RootOriginatorId, om.ParentOrder.RootOriginatorRef)
+		om.ExecVenueId, om.GetParentOrderId(), om.ParentOrder.RootOriginatorId, om.ParentOrder.RootOriginatorRef, listing.Market.Mic)
 
 	// First persisted orders start at version 0, this is a placeholder until the first child order update is received
 	pendingOrder.Version = -1

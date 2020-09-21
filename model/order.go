@@ -109,7 +109,8 @@ func (o *Order) createStatusTransitionError(status OrderStatus) error {
 }
 
 func NewOrder(id string, OrderSide Side, Quantity *Decimal64, Price *Decimal64, listingId int32,
-	originatorId string, originatorRef string, rootOriginatorId string, rootOriginatorRef string) *Order {
+	originatorId string, originatorRef string, rootOriginatorId string, rootOriginatorRef string,
+	destination string) *Order {
 
 	now := time.Now()
 
@@ -130,6 +131,7 @@ func NewOrder(id string, OrderSide Side, Quantity *Decimal64, Price *Decimal64, 
 		OriginatorRef:     originatorRef,
 		RootOriginatorId:  rootOriginatorId,
 		RootOriginatorRef: rootOriginatorRef,
+		Destination: destination,
 	}
 
 }

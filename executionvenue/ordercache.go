@@ -44,7 +44,7 @@ func (oc *OrderCache) Store(order *model.Order) error {
 			return fmt.Errorf("failed to compare order: %w", err)
 		}
 
-		if bytes.Compare(existingOrderAsBytes, orderAsBytes) == 0 {
+		if bytes.Equal(existingOrderAsBytes, orderAsBytes)  {
 			// no change, so do not store the order
 			return nil
 		}

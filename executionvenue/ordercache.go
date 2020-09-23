@@ -1,8 +1,11 @@
 package executionvenue
 
 import (
-	"github.com/ettec/otp-common/orderstore"
+	"bytes"
+	"fmt"
 	"github.com/ettec/otp-common/model"
+	"github.com/ettec/otp-common/orderstore"
+	"github.com/golang/protobuf/proto"
 )
 
 type OrderCache struct {
@@ -30,6 +33,22 @@ func (oc *OrderCache) Store(order *model.Order) error {
 
 	existingOrder, exists := oc.cache[order.Id]
 	if exists {
+
+		orderAsBytes, err := proto.Marshal(order)
+		if err != nil {
+			return fmt.Errorf("failed to compare order: %w", err)
+		}
+
+		existingOrderAsBytes, err := proto.Marshal(existingOrder)
+		if err != nil {
+			return fmt.Errorf("failed to compare order: %w", err)
+		}
+
+		if bytes.Compare(existingOrderAsBytes, orderAsBytes) == 0 {
+			// no change, so do not store the order
+			return nil
+		}
+
 		order.Version = existingOrder.Version + 1
 	}
 

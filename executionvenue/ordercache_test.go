@@ -22,15 +22,65 @@ func (t *testOrderStore) Close() {
 	panic("implement me")
 }
 
-func TestOrderCache_Store_DoesNotStoreDuplicateOrder(t *testing.T) {
+
+func TestModifyingStoredOrderDoesNotModifyCacheOrder(t *testing.T) {
+
 	testStore := &testOrderStore{}
 	cache, _:= NewOrderCache( testStore, "testid")
 
-	order := &model.Order{Id: "1"}
+	order := &model.Order{Id: "1", Status: model.OrderStatus_NONE}
 	cache.Store(order)
+
+	order.Status = model.OrderStatus_FILLED
+
+	order2, _,_ :=cache.GetOrder("1")
+	if order2.Status != model.OrderStatus_NONE {
+		t.FailNow()
+	}
+
+}
+
+
+func TestModifyingRetrievedOrderDoesNotModifyCacheOrder(t *testing.T) {
+
+	testStore := &testOrderStore{}
+	cache, _:= NewOrderCache( testStore, "testid")
+
+	order := &model.Order{Id: "1", Status: model.OrderStatus_NONE}
+	cache.Store(order)
+
+	order, _,_ =cache.GetOrder("1")
+
+	order.Status = model.OrderStatus_FILLED
+
+	order2, _,_ :=cache.GetOrder("1")
+	if order2.Status != model.OrderStatus_NONE {
+		t.FailNow()
+	}
+
+}
+
+func TestOrderCache_Store_DoesNotStoreOrderIfIdentical(t *testing.T) {
+	testStore := &testOrderStore{}
+	cache, _:= NewOrderCache( testStore, "testid")
+
+	order := &model.Order{Id: "1", Status: model.OrderStatus_NONE}
+	cache.Store(order)
+
+	order, _,_ =cache.GetOrder("1")
 	cache.Store(order)
 
 	if len(testStore.writes) != 1 {
+		t.FailNow()
+	}
+
+
+
+	order.Status =  model.OrderStatus_LIVE
+
+	cache.Store(order)
+
+	if len(testStore.writes) != 2 {
 		t.FailNow()
 	}
 

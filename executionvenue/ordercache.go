@@ -31,6 +31,18 @@ func NewOrderCache(store orderstore.OrderStore, ownerId string) (*OrderCache, er
 
 func (oc *OrderCache) Store(order *model.Order) error {
 
+	orderAsBytes, err := proto.Marshal(order)
+	if err != nil {
+		return err
+	}
+	orderCopy := &model.Order{}
+	err = proto.Unmarshal(orderAsBytes, orderCopy)
+	if err != nil {
+		return err
+	}
+	order = orderCopy
+
+
 	existingOrder, exists := oc.cache[order.Id]
 	if exists {
 
@@ -63,13 +75,20 @@ func (oc *OrderCache) Store(order *model.Order) error {
 }
 
 // Returns the order and true if found, otherwise a nil value and false
-func (oc *OrderCache) GetOrder(orderId string) (*model.Order, bool) {
+func (oc *OrderCache) GetOrder(orderId string) (*model.Order, bool, error) {
 	order, ok := oc.cache[orderId]
 
 	if ok {
-		return order, true
+		orderAsBytes, err := proto.Marshal(order)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal order:%w", err)
+		}
+		orderCopy := &model.Order{}
+		err = proto.Unmarshal(orderAsBytes, orderCopy)
+
+		return orderCopy, true, nil
 	} else {
-		return nil, false
+		return nil, false, nil
 	}
 }
 

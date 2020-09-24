@@ -183,7 +183,7 @@ func (om *Strategy) persistParentOrderChanges() error {
 
 	orderAsBytes, err := proto.Marshal(&om.ParentOrder.Order)
 
-	if bytes.Compare(om.lastStoredOrder, orderAsBytes) != 0 {
+	if !bytes.Equal(om.lastStoredOrder, orderAsBytes) {
 
 		if om.lastStoredOrder != nil {
 			om.ParentOrder.Version = om.ParentOrder.Version + 1

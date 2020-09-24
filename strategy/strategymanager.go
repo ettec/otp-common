@@ -100,7 +100,7 @@ func (s *strategyManager) CreateAndRouteOrder(ctx context.Context, params *api.C
 	s.executeFn(om)
 
 	return &api.OrderId{
-		OrderId: om.ExecVenueId,
+		OrderId: id.String(),
 	}, nil
 }
 

@@ -19,15 +19,15 @@ type BalancingStatefulPod struct {
 	TargetAddress string
 	Ordinal       int
 	Name          string
+	Mic string
 }
 
-func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingStatefulPod, error) {
-	micToTargetAddress := map[string][]BalancingStatefulPod{}
+func GetMicToStatefulPodAddresses(serviceType string) (map[string][]*BalancingStatefulPod, error) {
+	micToTargetAddress := map[string][]*BalancingStatefulPod{}
 
 	clientSet := k8s.GetK8sClientSet(false)
 
 	namespace := "default"
-
 
 	list, err := clientSet.CoreV1().Pods(namespace).List(v1.ListOptions{
 		LabelSelector: "servicetype=" + serviceType,
@@ -40,24 +40,34 @@ func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingSta
 	log.Printf("found %v stateful pods with service type %v", len(list.Items), serviceType)
 
 	for _, pod := range list.Items {
-		const micLabel = "mic"
-		if _, ok := pod.Labels[micLabel]; !ok {
-			log.Printf("ignoring stateful pod as it does not have a mic label, pod: %v", pod)
-			continue
-		}
-
-		mic := pod.Labels[micLabel]
-
-		targetAddress, err := getStatefulSetMemberAddress(pod)
+		 bsp,  err := GetBalancingStatefulPod(pod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get stateful pod address:%v", err)
+			return nil, err
 		}
 
-		ordinal, err := getStatefulSetPodOrdinal(pod)
-		micToTargetAddress[mic] = append(micToTargetAddress[mic], BalancingStatefulPod{TargetAddress: targetAddress,
-			Ordinal: ordinal, Name: pod.Name})
+		micToTargetAddress[bsp.Mic] = append(micToTargetAddress[bsp.Mic], bsp)
 	}
 	return micToTargetAddress, nil
+}
+
+func GetBalancingStatefulPod(pod v12.Pod) ( *BalancingStatefulPod,  error) {
+	const micLabel = "mic"
+	if _, ok := pod.Labels[micLabel]; !ok {
+		return nil, fmt.Errorf("ignoring stateful pod as it does not have a mic label, pod: %v", pod)
+	}
+
+	mic := pod.Labels[micLabel]
+
+	targetAddress, err := getStatefulSetMemberAddress(pod)
+	if err != nil {
+		return  nil, fmt.Errorf("failed to get stateful pod address:%v", err)
+	}
+
+	ordinal, err := getStatefulSetPodOrdinal(pod)
+
+	bsp := &BalancingStatefulPod{TargetAddress: targetAddress,
+		Ordinal: ordinal, Name: pod.Name, Mic: mic}
+	return bsp, nil
 }
 
 func getStatefulSetPodOrdinal(pod v12.Pod) (int, error) {

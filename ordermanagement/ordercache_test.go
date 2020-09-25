@@ -1,4 +1,4 @@
-package executionvenue
+package ordermanagement
 
 import (
 	"github.com/ettec/otp-common/model"

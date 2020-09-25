@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	api "github.com/ettec/otp-common/api/executionvenue"
-	"github.com/ettec/otp-common/executionvenue"
+	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/ettec/otp-common/model"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
@@ -23,21 +23,21 @@ type Strategy struct {
 	ChildOrderUpdateChan <-chan *model.Order
 
 	ExecVenueId string
-	ParentOrder *executionvenue.ParentOrder
+	ParentOrder *ordermanagement.ParentOrder
 	Log         *logger.Logger
 	ErrLog      *logger.Logger
 
 	lastStoredOrder  []byte
 	store            func(*model.Order) error
 	orderRouter      api.ExecutionVenueClient
-	childOrderStream executionvenue.ChildOrderStream
+	childOrderStream ordermanagement.ChildOrderStream
 
 	doneChan chan<- string
 }
 
 func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRouteOrderParams, execVenueId string,
 	store func(*model.Order) error, orderRouter api.ExecutionVenueClient,
-	childOrderStream executionvenue.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
+	childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
 
 	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
 		params.OriginatorId, params.OriginatorRef, params.RootOriginatorId, params.RootOriginatorRef, params.Destination)
@@ -54,8 +54,8 @@ func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRout
 	return om, nil
 }
 
-func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Order) error, execVenueId string, orderRouter api.ExecutionVenueClient, childOrderStream executionvenue.ChildOrderStream, doneChan chan<- string) *Strategy {
-	po := executionvenue.NewParentOrder(*initialState)
+func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Order) error, execVenueId string, orderRouter api.ExecutionVenueClient, childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) *Strategy {
+	po := ordermanagement.NewParentOrder(*initialState)
 	return &Strategy{
 		lastStoredOrder:      nil,
 		CancelChan:           make(chan string, 10),
@@ -202,6 +202,7 @@ func (om *Strategy) persistParentOrderChanges() error {
 			return err
 		}
 
+		log.Printf("Stored:%v", orderCopy)
 		err = om.store(orderCopy)
 		if err != nil {
 			return err

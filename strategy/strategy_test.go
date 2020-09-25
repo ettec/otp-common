@@ -7,7 +7,40 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"testing"
+	"time"
 )
+
+func Test_ParentOrderUpdatesOnlySentWhenParentOrderChanged(t *testing.T) {
+
+	parentOrderUpdatesChan, _, _, _, _, _, _, _ := setupStrategy(
+		func(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {
+
+			go func() {
+				if om.ParentOrder.GetTargetStatus() == model.OrderStatus_LIVE {
+					om.ParentOrder.SetStatus(model.OrderStatus_LIVE)
+				}
+
+				for i := 0; i < 6; i++ {
+					om.CheckIfDone()
+				}
+			}()
+		})
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		close(parentOrderUpdatesChan)
+	}()
+
+	numUpdates := 0
+	for range parentOrderUpdatesChan {
+		numUpdates++
+	}
+
+	if numUpdates != 1 {
+		t.FailNow()
+	}
+
+}
 
 func Test_SendingChildOrders(t *testing.T) {
 	setupStrategyAndSendTwoChildOrders(t)
@@ -75,7 +108,7 @@ func Test_StrategyCancel(t *testing.T) {
 }
 
 func Test_cancelOfUnexposedOrder(t *testing.T) {
-	parentOrderUpdatesChan, _, _, _, _, _, om, _ := setupStrategy()
+	parentOrderUpdatesChan, _, _, _, _, _, om, _ := setupStrategy(ExecuteAsDmaStrategy)
 
 	order := <-parentOrderUpdatesChan
 
@@ -102,7 +135,7 @@ func Test_cancelOfUnexposedOrder(t *testing.T) {
 }
 
 func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
-	parentOrderUpdatesChan, childOrderOutboundParams, cancelOrderOutboundParams, childOrdersIn, sendChildQty, listing, om, doneChan := setupStrategy()
+	parentOrderUpdatesChan, childOrderOutboundParams, cancelOrderOutboundParams, childOrdersIn, sendChildQty, listing, om, doneChan := setupStrategy(ExecuteAsDmaStrategy)
 
 	params1 := &api.CreateAndRouteOrderParams{
 		OrderSide:     model.Side_BUY,
@@ -251,7 +284,7 @@ func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan ch
 	om *Strategy, doneChan chan string, child1Id string, child2Id string) {
 
 	parentOrderUpdatesChan, childOrderOutboundParams, childOrderCancelParams, childOrdersIn, sendChildQty, listing,
-		om, doneChan = setupStrategy()
+		om, doneChan = setupStrategy(ExecuteAsDmaStrategy)
 
 	<-parentOrderUpdatesChan
 
@@ -334,24 +367,24 @@ func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan ch
 		listing, om, doneChan, child1Id, child2Id
 }
 
-func setupStrategy() (parentOrderUpdatesChan chan model.Order, childOrderOutboundParams chan paramsAndId,
-	childOrderCancelParams chan *api.CancelOrderParams, childOrdersIn chan *model.Order,
+func setupStrategy(strategy func(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing)) (parentOrderUpdatesChan chan model.Order, childOrderOutboundParamsChan chan paramsAndId,
+	childOrderCancelParamsChan chan *api.CancelOrderParams, childOrdersIn chan *model.Order,
 	sendChildQty chan *model.Decimal64, listing *model.Listing,
 	om *Strategy, doneChan chan string) {
 
 	listing = &model.Listing{
 		Version: 0,
 		Id:      1,
-		Market: &model.Market{Mic:"XNAS"},
+		Market:  &model.Market{Mic: "XNAS"},
 	}
 
 	parentOrderUpdatesChan = make(chan model.Order)
 
-	childOrderOutboundParams = make(chan paramsAndId)
-	childOrderCancelParams = make(chan *api.CancelOrderParams)
+	childOrderOutboundParamsChan = make(chan paramsAndId)
+	childOrderCancelParamsChan = make(chan *api.CancelOrderParams)
 	orderRouter := &testOmClient{
-		croParamsChan:    childOrderOutboundParams,
-		cancelParamsChan: childOrderCancelParams,
+		croParamsChan:    childOrderOutboundParamsChan,
+		cancelParamsChan: childOrderCancelParamsChan,
 	}
 
 	childOrdersIn = make(chan *model.Order)
@@ -363,7 +396,7 @@ func setupStrategy() (parentOrderUpdatesChan chan model.Order, childOrderOutboun
 		OrderSide:          model.Side_BUY,
 		Quantity:           &model.Decimal64{Mantissa: 100},
 		Price:              &model.Decimal64{Mantissa: 200},
-		ListingId:            listing.Id,
+		ListingId:          listing.Id,
 		Destination:        listing.Market.Mic,
 		OriginatorId:       "",
 		OriginatorRef:      "",
@@ -379,8 +412,8 @@ func setupStrategy() (parentOrderUpdatesChan chan model.Order, childOrderOutboun
 	}
 
 	sendChildQty = make(chan *model.Decimal64)
-	ExecuteAsDmaStrategy(om, sendChildQty, listing)
-	return parentOrderUpdatesChan, childOrderOutboundParams, childOrderCancelParams, childOrdersIn, sendChildQty, listing, om, doneChan
+	strategy(om, sendChildQty, listing)
+	return parentOrderUpdatesChan, childOrderOutboundParamsChan, childOrderCancelParamsChan, childOrdersIn, sendChildQty, listing, om, doneChan
 }
 
 func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {

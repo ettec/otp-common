@@ -27,6 +27,8 @@ func GetMicToStatefulPodAddresses(serviceType string) (map[string][]BalancingSta
 	clientSet := k8s.GetK8sClientSet(false)
 
 	namespace := "default"
+
+
 	list, err := clientSet.CoreV1().Pods(namespace).List(v1.ListOptions{
 		LabelSelector: "servicetype=" + serviceType,
 	})

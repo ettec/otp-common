@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	api "github.com/ettec/otp-common/api/executionvenue"
-	"github.com/ettec/otp-common/executionvenue"
+	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/ettec/otp-common/model"
 	"github.com/ettec/otp-common/orderstore"
 	"github.com/google/uuid"
@@ -19,7 +19,7 @@ var log = logger.New(os.Stdout, "", logger.Ltime|logger.Lshortfile)
 
 type ChildOrderUpdates interface {
 	Start()
-	NewOrderStream(parentOrderId string, bufferSize int) executionvenue.ChildOrderStream
+	NewOrderStream(parentOrderId string, bufferSize int) ordermanagement.ChildOrderStream
 }
 
 

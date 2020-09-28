@@ -52,7 +52,7 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 	}
 
 	return newStaticDataSource(func() (client services.StaticDataServiceClient, connection GrpcConnection, err error) {
-		log.Println("connecting to static data service at:" + targetAddress)
+		log.Println("static data service address:" + targetAddress)
 		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(120*time.Second))
 		if err != nil {
 			return nil, nil, err
@@ -61,12 +61,12 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 		sdc := services.NewStaticDataServiceClient(conn)
 
 		return sdc, conn, nil
-	})
+	}, 10000)
 }
 
-func newStaticDataSource(getConnection GetStaticDataServiceClientFn) (*listingSource, error) {
+func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponseBufSize int) (*listingSource, error) {
 	s := &listingSource{
-		sdcTaskChan: make(chan staticDataServiceTask, 10000),
+		sdcTaskChan: make(chan staticDataServiceTask, sdsResponseBufSize),
 		log:         log.New(os.Stdout, "", log.Ltime|log.Lshortfile),
 		errLog:      log.New(os.Stdout, "", log.Ltime|log.Lshortfile),
 	}
@@ -80,11 +80,13 @@ func newStaticDataSource(getConnection GetStaticDataServiceClientFn) (*listingSo
 
 		for {
 			state := conn.GetState()
-			for state != connectivity.Ready {
+			if state != connectivity.Ready {
 				s.log.Printf("connecting to static data service....")
-				conn.WaitForStateChange(context.Background(), state)
-				state = conn.GetState()
-				s.log.Println("static data service connection state is:", state)
+				for state != connectivity.Ready {
+					conn.WaitForStateChange(context.Background(), state)
+					state = conn.GetState()
+				}
+				s.log.Printf("static data service connected")
 			}
 
 			select {
@@ -118,7 +120,6 @@ func (s *listingSource) GetListing(listingId int32, result chan<- *model.Listing
 				s.errLog.Printf("no listing found for id:%v", listingId)
 			}
 		} else {
-			s.log.Println("received listing:", listing)
 			result <- listing
 		}
 

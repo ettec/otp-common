@@ -20,7 +20,7 @@ type orderReader interface {
 	ReadMessage(ctx context.Context) (kafka.Message, error)
 }
 
-var errLog = logger.New(os.Stderr, "", logger.Ltime|logger.Lshortfile)
+var errLog = logger.New(os.Stderr, logger.Prefix(), logger.Flags())
 
 func GetChildOrders(id string, kafkaBrokerUrls []string, bufferSize int) (<-chan ChildOrder, error) {
 

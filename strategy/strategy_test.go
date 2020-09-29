@@ -6,6 +6,7 @@ import (
 	"github.com/ettec/otp-common/model"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"log"
 	"testing"
 	"time"
 )
@@ -425,7 +426,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 		for {
 			done, err := om.CheckIfDone()
 			if err != nil {
-				om.ErrLog.Printf("failed to check if done, cancelling order:%v", err)
+				om.errLog.Printf("failed to check if done, cancelling order:%v", err)
 				om.Cancel()
 			}
 
@@ -439,12 +440,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 					om.ParentOrder.ErrorMessage = errMsg
 				}
 
-				err := om.CancelParentOrder(func(listingId int32) *model.Listing {
-					if listingId != listing.Id {
-						panic("unexpected listing id")
-					}
-					return listing
-				})
+				err := om.CancelParentOrder()
 				if err != nil {
 					log.Panicf("failed to cancel order:%v", err)
 				}

@@ -204,7 +204,7 @@ func Test_parentOrder_recovery(t *testing.T) {
 
 	numUpdates := len(preFailureUpdates)
 	for idx, update := range preFailureUpdates {
-		childOrdersRecovered := recoveredOrder.OnChildOrderUpdate(update)
+		childOrdersRecovered, _ := recoveredOrder.OnChildOrderUpdate(update)
 		if idx < numUpdates-1 {
 			if childOrdersRecovered {
 				t.FailNow()

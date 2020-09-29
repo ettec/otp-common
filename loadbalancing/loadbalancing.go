@@ -97,7 +97,6 @@ func getStatefulSetMemberAddress(pod v12.Pod) (string, error) {
 	idx := strings.LastIndex(pod.Name, "-")
 	r := []rune(pod.Name)
 	serviceName := string(r[0:idx])
-	//podId := string(r[idx+1:len(p)])
 
 	targetAddress := pod.Name + "." + serviceName + ":" + strconv.Itoa(int(podPort))
 	return targetAddress, nil

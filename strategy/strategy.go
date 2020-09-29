@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	api "github.com/ettec/otp-common/api/executionvenue"
-	"github.com/ettec/otp-common/ordermanagement"
+	"github.com/ettec/otp-common/api/executionvenue"
 	"github.com/ettec/otp-common/model"
+	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	logger "log"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -22,21 +22,20 @@ type Strategy struct {
 	CancelChan           chan string
 	ChildOrderUpdateChan <-chan *model.Order
 
-	ExecVenueId string
-	ParentOrder *ordermanagement.ParentOrder
-	Log         *logger.Logger
-	ErrLog      *logger.Logger
-
+	ExecVenueId      string
+	ParentOrder      *ordermanagement.ParentOrder
+	errLog           *log.Logger
+	log              *log.Logger
 	lastStoredOrder  []byte
 	store            func(*model.Order) error
-	orderRouter      api.ExecutionVenueClient
+	orderRouter      executionvenue.ExecutionVenueClient
 	childOrderStream ordermanagement.ChildOrderStream
 
 	doneChan chan<- string
 }
 
-func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRouteOrderParams, execVenueId string,
-	store func(*model.Order) error, orderRouter api.ExecutionVenueClient,
+func NewStrategyFromCreateParams(parentOrderId string, params *executionvenue.CreateAndRouteOrderParams, execVenueId string,
+	store func(*model.Order) error, orderRouter executionvenue.ExecutionVenueClient,
 	childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
 
 	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
@@ -54,7 +53,7 @@ func NewStrategyFromCreateParams(parentOrderId string, params *api.CreateAndRout
 	return om, nil
 }
 
-func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Order) error, execVenueId string, orderRouter api.ExecutionVenueClient, childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) *Strategy {
+func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Order) error, execVenueId string, orderRouter executionvenue.ExecutionVenueClient, childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) *Strategy {
 	po := ordermanagement.NewParentOrder(*initialState)
 	return &Strategy{
 		lastStoredOrder:      nil,
@@ -66,8 +65,8 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 		childOrderStream:     childOrderStream,
 		ChildOrderUpdateChan: childOrderStream.GetStream(),
 		doneChan:             doneChan,
-		Log:                  logger.New(os.Stdout, "order:"+po.Id+" ", logger.Lshortfile|logger.Ltime),
-		ErrLog:               logger.New(os.Stderr, "order:"+po.Id+" ", logger.Lshortfile|logger.Ltime),
+		errLog:               log.New(os.Stderr, "order:"+po.Id+" ", log.Flags()),
+		log:				log.New(log.Writer(), "order:"+po.Id+" ", log.Flags()),
 	}
 }
 
@@ -79,9 +78,9 @@ func (om *Strategy) GetParentOrderId() string {
 	return om.ParentOrder.GetId()
 }
 
-func (om *Strategy) CancelParentOrder(listingSource func(int32) *model.Listing) error {
+func (om *Strategy) CancelParentOrder() error {
 	if !om.ParentOrder.IsTerminalState() {
-		om.Log.Print("cancelling order")
+		om.log.Print("cancelling order")
 		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
 
 		if err != nil {
@@ -92,7 +91,7 @@ func (om *Strategy) CancelParentOrder(listingSource func(int32) *model.Listing) 
 		for _, co := range om.ParentOrder.ChildOrders {
 			if !co.IsTerminalState() {
 				pendingChildOrderCancels = true
-				_, err := om.orderRouter.CancelOrder(context.Background(), &api.CancelOrderParams{
+				_, err := om.orderRouter.CancelOrder(context.Background(), &executionvenue.CancelOrderParams{
 					OrderId: co.Id,
 					ListingId: co.ListingId,
 					OwnerId: co.OwnerId,
@@ -126,7 +125,7 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 			om.ParentOrder.GetAvailableQty())
 	}
 
-	params := &api.CreateAndRouteOrderParams{
+	params := &executionvenue.CreateAndRouteOrderParams{
 		OrderSide:         side,
 		Quantity:          quantity,
 		Price:             price,
@@ -170,13 +169,16 @@ func (om *Strategy) CheckIfDone() (done bool, err error) {
 	return done, nil
 }
 
-func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) {
+func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 	if ok {
-		om.ParentOrder.OnChildOrderUpdate(co)
+		_, err := om.ParentOrder.OnChildOrderUpdate(co)
+		return err
 	} else {
-		om.ErrLog.Printf("child order update chan unexpectedly closed, cancelling order")
+		om.errLog.Printf("child order update chan unexpectedly closed, cancelling order")
 		om.Cancel()
 	}
+
+	return nil
 }
 
 func (om *Strategy) persistParentOrderChanges() error {
@@ -202,7 +204,6 @@ func (om *Strategy) persistParentOrderChanges() error {
 			return err
 		}
 
-		log.Printf("Stored:%v", orderCopy)
 		err = om.store(orderCopy)
 		if err != nil {
 			return err
@@ -214,13 +215,13 @@ func (om *Strategy) persistParentOrderChanges() error {
 }
 
 func (om *Strategy) CancelOrderWithErrorMsg(msg string) {
-	om.Log.Printf("Cancelling order:%v", msg)
+	om.log.Printf("Cancelling order:%v", msg)
 	om.CancelChan <- msg
 }
 
-func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Duration) (api.ExecutionVenueClient, error) {
+func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Duration) (executionvenue.ExecutionVenueClient, error) {
 	namespace := "default"
-	list, err := clientSet.CoreV1().Services(namespace).List(metav1.ListOptions{
+	list, err := clientSet.CoreV1().Services(namespace).List(v1.ListOptions{
 		LabelSelector: "app=order-router",
 	})
 
@@ -228,19 +229,19 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 		panic(err)
 	}
 
-	var client api.ExecutionVenueClient
+	var client executionvenue.ExecutionVenueClient
 
 	for _, service := range list.Items {
 
 		var podPort int32
 		for _, port := range service.Spec.Ports {
-			if port.Name == "api" {
+			if port.Name == "executionvenue" {
 				podPort = port.Port
 			}
 		}
 
 		if podPort == 0 {
-			log.Printf("ignoring order router service as it does not have a port named api, service: %v", service)
+			log.Printf("ignoring order router service as it does not have a port named executionvenue, service: %v", service)
 			continue
 		}
 
@@ -254,7 +255,7 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 			panic(err)
 		}
 
-		client = api.NewExecutionVenueClient(conn)
+		client = executionvenue.NewExecutionVenueClient(conn)
 		break
 	}
 

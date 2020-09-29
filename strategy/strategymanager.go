@@ -3,19 +3,18 @@ package strategy
 import (
 	"context"
 	"fmt"
-	api "github.com/ettec/otp-common/api/executionvenue"
-	"github.com/ettec/otp-common/ordermanagement"
+	"github.com/ettec/otp-common/api/executionvenue"
 	"github.com/ettec/otp-common/model"
+	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/ettec/otp-common/orderstore"
 	"github.com/google/uuid"
-	logger "log"
-	"os"
+	"log"
 	"sync"
 )
 
 const ChildUpdatesBufferSize = 1000
 
-var log = logger.New(os.Stdout, "", logger.Ltime|logger.Lshortfile)
+
 
 type ChildOrderUpdates interface {
 	Start()
@@ -27,7 +26,7 @@ type ChildOrderUpdates interface {
 type strategyManager struct {
 	id                string
 	store             orderstore.OrderStore
-	orderRouter       api.ExecutionVenueClient
+	orderRouter       executionvenue.ExecutionVenueClient
 	doneChan          chan string
 	orders            sync.Map
 	childOrderUpdates ChildOrderUpdates
@@ -35,7 +34,7 @@ type strategyManager struct {
 }
 
 func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, childOrderUpdates ChildOrderUpdates,
-	orderRouter api.ExecutionVenueClient, executeFn func(om *Strategy)) *strategyManager {
+	orderRouter executionvenue.ExecutionVenueClient, executeFn func(om *Strategy)) *strategyManager {
 
 	sm := &strategyManager{
 		id:                id,
@@ -77,11 +76,11 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 	return sm
 }
 
-func (s *strategyManager) GetExecutionParametersMetaData(ctx context.Context, empty *model.Empty) (*api.ExecParamsMetaDataJson, error) {
+func (s *strategyManager) GetExecutionParametersMetaData(_ context.Context, empty *model.Empty) (*executionvenue.ExecParamsMetaDataJson, error) {
 	panic("implement me")
 }
 
-func (s *strategyManager) CreateAndRouteOrder(ctx context.Context, params *api.CreateAndRouteOrderParams) (*api.OrderId, error) {
+func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executionvenue.CreateAndRouteOrderParams) (*executionvenue.OrderId, error) {
 
 	id, err := uuid.NewUUID()
 	if err != nil {
@@ -99,16 +98,16 @@ func (s *strategyManager) CreateAndRouteOrder(ctx context.Context, params *api.C
 
 	s.executeFn(om)
 
-	return &api.OrderId{
+	return &executionvenue.OrderId{
 		OrderId: id.String(),
 	}, nil
 }
 
-func (s *strategyManager) ModifyOrder(ctx context.Context, params *api.ModifyOrderParams) (*model.Empty, error) {
+func (s *strategyManager) ModifyOrder(_ context.Context, _ *executionvenue.ModifyOrderParams) (*model.Empty, error) {
 	return nil, fmt.Errorf("order modification not supported")
 }
 
-func (s *strategyManager) CancelOrder(ctx context.Context, params *api.CancelOrderParams) (*model.Empty, error) {
+func (s *strategyManager) CancelOrder(_ context.Context, params *executionvenue.CancelOrderParams) (*model.Empty, error) {
 
 	if val, exists := s.orders.Load(params.OrderId); exists {
 		om := val.(*Strategy)

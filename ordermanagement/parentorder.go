@@ -1,6 +1,7 @@
 package ordermanagement
 
 import (
+	"fmt"
 	"github.com/ettec/otp-common/model"
 )
 
@@ -34,7 +35,7 @@ func NewParentOrder(order model.Order) *ParentOrder {
 	}
 }
 
-func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) bool {
+func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) (bool, error) {
 
 	po.ChildOrders[childOrder.Id] = childOrder
 
@@ -64,7 +65,7 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) bool {
 
 	if ref, exists := po.childOrderRefs[childOrder.Id]; exists {
 		if childOrder.Version <= ref.Version {
-			return po.childOrdersRecovered
+			return po.childOrdersRecovered, nil
 		} else {
 			newRef := model.Ref{Id: childOrder.Id, Version: childOrder.Version}
 			po.childOrderRefs[childOrder.Id] = newRef
@@ -85,7 +86,10 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) bool {
 	}
 
 	if newExecution != nil {
-		po.AddExecution(*newExecution)
+		err := po.AddExecution(*newExecution)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	exposedQnt := model.IasD(0)
@@ -101,11 +105,13 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) bool {
 
 	if po.GetTargetStatus() == model.OrderStatus_CANCELLED {
 		if po.GetExposedQuantity().Equal(zero) {
-			po.SetTargetStatus(model.OrderStatus_NONE)
-			po.SetStatus(model.OrderStatus_CANCELLED)
+			err := po.SetStatus(model.OrderStatus_CANCELLED)
+			if err != nil {
+				return false, fmt.Errorf("failed to parent order status to cancelld:%w",err)
+			}
 		}
 	}
 
-	return po.childOrdersRecovered
+	return po.childOrdersRecovered, nil
 
 }

@@ -31,7 +31,6 @@ type ListingSource interface {
 
 type listingSource struct {
 	sdcTaskChan chan staticDataServiceTask
-	log         *log.Logger
 	errLog      *log.Logger
 }
 
@@ -67,8 +66,7 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponseBufSize int) (*listingSource, error) {
 	s := &listingSource{
 		sdcTaskChan: make(chan staticDataServiceTask, sdsResponseBufSize),
-		log:         log.New(os.Stdout, "", log.Ltime|log.Lshortfile),
-		errLog:      log.New(os.Stdout, "", log.Ltime|log.Lshortfile),
+		errLog:      log.New(os.Stdout, log.Prefix(), log.Flags()),
 	}
 
 	sdc, conn, err := getConnection()
@@ -81,12 +79,12 @@ func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponse
 		for {
 			state := conn.GetState()
 			if state != connectivity.Ready {
-				s.log.Printf("connecting to static data service....")
+				log.Printf("connecting to static data service....")
 				for state != connectivity.Ready {
 					conn.WaitForStateChange(context.Background(), state)
 					state = conn.GetState()
 				}
-				s.log.Printf("static data service connected")
+				log.Printf("static data service connected")
 			}
 
 			select {
@@ -139,7 +137,7 @@ func (s *listingSource) GetListingMatching(matchParams *services.ExactMatchParam
 				s.errLog.Printf("no listing found for match params:%v", matchParams)
 			}
 		} else {
-			s.log.Printf("received listing:%v for symbol matching:%v and mic:%v", listing, matchParams.Symbol,
+			log.Printf("received listing:%v for symbol matching:%v and mic:%v", listing, matchParams.Symbol,
 				matchParams.Mic)
 			result <- listing
 		}

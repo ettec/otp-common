@@ -6,13 +6,13 @@ import (
 	"github.com/ettec/otp-common/model"
 	"github.com/golang/protobuf/proto"
 	"github.com/segmentio/kafka-go"
-	logger "log"
+	"log"
 	"os"
 	"time"
 )
 
-var log = logger.New(os.Stdout, "", logger.Ltime|logger.Lshortfile)
-var errLog = logger.New(os.Stderr, "", logger.Ltime|logger.Lshortfile)
+
+var errLog = log.New(os.Stderr, log.Prefix(), log.Flags())
 
 type KafkaStore struct {
 	writer          *kafka.Writer
@@ -155,7 +155,10 @@ func getInitialState(reader orderReader, filter func(order *model.Order) bool) (
 }
 
 func (ks *KafkaStore) Close() {
-	ks.writer.Close()
+	err := ks.writer.Close()
+	if err != nil {
+		errLog.Printf("error when closing kafka writer:%v", err)
+	}
 }
 
 func (ks *KafkaStore) Write(order *model.Order) error {

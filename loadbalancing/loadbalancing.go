@@ -2,10 +2,10 @@ package loadbalancing
 
 import (
 	"fmt"
-	"github.com/emicklei/go-restful/log"
 	"github.com/ettec/otp-common/k8s"
 	v12 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"log"
 	"strconv"
 	"strings"
 )

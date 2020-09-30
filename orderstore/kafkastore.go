@@ -19,6 +19,7 @@ type KafkaStore struct {
 	topic           string
 	kafkaBrokerUrls []string
 	ownerId string
+	kafkaReaderConfig kafka.ReaderConfig
 }
 
 type orderReader interface {
@@ -26,24 +27,39 @@ type orderReader interface {
 	ReadMessage(ctx context.Context) (kafka.Message, error)
 }
 
-func NewKafkaStore(kafkaBrokerUrls []string, ownerId string) (*KafkaStore, error) {
+func DefaultReaderConfig(topic string, kafkaBrokerUrls []string) kafka.ReaderConfig {
+	return kafka.ReaderConfig{
+		Brokers:        kafkaBrokerUrls,
+		Topic:          topic,
+		ReadBackoffMin: 100 * time.Millisecond,
+		ReadBackoffMax: 200 * time.Millisecond,
+		MaxWait:        150 * time.Millisecond,
+	}
+}
+
+func DefaultWriterConfig(topic string, kafkaBrokerUrls []string) kafka.WriterConfig {
+	return kafka.WriterConfig{
+		Brokers:      kafkaBrokerUrls,
+		Topic:        topic,
+		Balancer:     &kafka.LeastBytes{},
+		Async:        true,
+		BatchTimeout: 10 * time.Millisecond,
+	}
+}
+
+func NewKafkaStore(kafkaReaderConfig kafka.ReaderConfig, kafkaWriterConfig kafka.WriterConfig,
+	ownerId string) (*KafkaStore, error) {
 
 	topic := "orders"
 
 	result := KafkaStore{
 
 		topic:           topic,
-		kafkaBrokerUrls: kafkaBrokerUrls,
+		kafkaReaderConfig: kafkaReaderConfig,
 		ownerId: ownerId,
 	}
 
-	result.writer = kafka.NewWriter(kafka.WriterConfig{
-		Brokers:      kafkaBrokerUrls,
-		Topic:        topic,
-		Balancer:     &kafka.LeastBytes{},
-		Async:        true,
-		BatchTimeout: 10 * time.Millisecond,
-	})
+	result.writer = kafka.NewWriter(kafkaWriterConfig)
 
 	return &result, nil
 }
@@ -52,7 +68,12 @@ func (ks *KafkaStore) RecoverInitialCache( loadOrder func(order *model.Order) bo
 
 	log.Println("restoring order state")
 	reader := ks.getNewReader()
-	defer reader.Close()
+	defer func() {
+		err := reader.Close()
+		if err != nil {
+			log.Printf("error on closing kafka reader:%v", err)
+		}
+	} ()
 
 	result, err := getInitialState(reader, loadOrder)
 
@@ -64,13 +85,7 @@ func (ks *KafkaStore) RecoverInitialCache( loadOrder func(order *model.Order) bo
 }
 
 func (ks *KafkaStore) getNewReader() *kafka.Reader {
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        ks.kafkaBrokerUrls,
-		Topic:          ks.topic,
-		ReadBackoffMin: 100 * time.Millisecond,
-		ReadBackoffMax: 200 * time.Millisecond,
-		MaxWait:        150 * time.Millisecond,
-	})
+	reader := kafka.NewReader(ks.kafkaReaderConfig)
 	return reader
 }
 
@@ -89,7 +104,12 @@ func (ks *KafkaStore) SubscribeToAllOrders(updatesChan chan<- *model.Order, afte
 	}
 
 	go func() {
-		defer reader.Close()
+		defer func() {
+			err := reader.Close()
+			if err != nil {
+				log.Printf("error on closing kafka reader:%v", err)
+			}
+		} ()
 		for {
 			msg, err := reader.ReadMessage(context.Background())
 

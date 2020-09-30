@@ -3,6 +3,7 @@ package marketdata
 import (
 	"fmt"
 	"github.com/ettec/otp-common/api/marketdatasource"
+	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/model"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,13 +24,17 @@ var quotesSent = promauto.NewCounter(prometheus.CounterOpts{
 
 type marketDataSourceServer struct {
 	quoteDistributor QuoteDistributor
+	maxSubscriptions int
 }
 
 func NewMarketDataSource(quoteDistributor QuoteDistributor) marketdatasource.MarketDataSourceServer {
-	return &marketDataSourceServer{quoteDistributor}
+
+	maxSubscriptions := bootstrap.GetOptionalIntEnvVar("MARKETDATASOURCE_MAX_SUBSCRIPTIONS", 10000)
+
+	return &marketDataSourceServer{quoteDistributor, maxSubscriptions }
 }
 
-var maxSubscriptions = 10000
+
 
 const SubscriberIdKey = "subscriber_id"
 
@@ -52,7 +57,7 @@ func (s *marketDataSourceServer) Connect(stream marketdatasource.MarketDataSourc
 
 	out := make(chan *model.ClobQuote)
 
-	cc := NewConflatedQuoteConnection(subscriberId, s.quoteDistributor.GetNewQuoteStream(), out, maxSubscriptions)
+	cc := NewConflatedQuoteConnection(subscriberId, s.quoteDistributor.GetNewQuoteStream(), out, s.maxSubscriptions)
 	defer cc.Close()
 
 	go func() {

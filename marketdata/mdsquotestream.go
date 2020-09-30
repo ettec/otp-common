@@ -4,6 +4,7 @@ import (
 	"context"
 	api "github.com/ettec/otp-common/api/marketdataservice"
 	"github.com/ettec/otp-common/api/marketdatasource"
+	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -156,6 +157,9 @@ func NewQuoteStreamFromMdSource(id string, targetAddress string, maxReconnectInt
 func NewMdsQuoteStreamFromFn(id string, targetAddress string, out chan *model.ClobQuote,
 	getConnection GetMdsClientFn) (*mdsQuoteStream, error) {
 
+
+	maxReconnectWaitSecs := bootstrap.GetOptionalIntEnvVar("MDSQUOTESTREAM_MAX_RECONNECT_WAIT_SECS", 30)
+
 	n := &mdsQuoteStream{
 		subscriptionsChan: make(chan int32),
 		closeWriterChan:   make(chan bool),
@@ -237,11 +241,15 @@ func NewMdsQuoteStreamFromFn(id string, targetAddress string, out chan *model.Cl
 		for {
 
 			state := conn.GetState()
-			var retryWait int64 = 1
+			var retryWait int = 1
 			for state != connectivity.Ready {
 				n.log.Printf("waiting %v seconds before checking market data source connection state", retryWait)
 				time.Sleep(time.Duration(retryWait) * time.Second)
 				retryWait = retryWait * 2
+
+				if retryWait > maxReconnectWaitSecs {
+					retryWait = maxReconnectWaitSecs
+				}
 
 				conn.WaitForStateChange(context.Background(), state)
 

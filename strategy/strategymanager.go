@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ettec/otp-common/api/executionvenue"
+	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/model"
 	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/ettec/otp-common/orderstore"
@@ -12,7 +13,7 @@ import (
 	"sync"
 )
 
-const ChildUpdatesBufferSize = 1000
+
 
 
 
@@ -31,6 +32,7 @@ type strategyManager struct {
 	orders            sync.Map
 	childOrderUpdates ChildOrderUpdates
 	executeFn         func(om *Strategy)
+	inboundChildUpdatesBufferSize int
 }
 
 func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, childOrderUpdates ChildOrderUpdates,
@@ -43,6 +45,7 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 		doneChan:          make(chan string, 100),
 		orders:            sync.Map{},
 		childOrderUpdates: childOrderUpdates,
+		inboundChildUpdatesBufferSize: bootstrap.GetOptionalIntEnvVar("STRATEGYMANAGER_INBOUND_CHILD_UPDATES_BUFFER_SIZE", 1000),
 	}
 
 	sm.executeFn = executeFn
@@ -64,7 +67,7 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 		if !order.IsTerminalState() {
 
 			om := NewStrategyFromParentOrder(order, sm.store.Write, sm.id, sm.orderRouter,
-				sm.childOrderUpdates.NewOrderStream(order.Id, 1000),
+				sm.childOrderUpdates.NewOrderStream(order.Id, sm.inboundChildUpdatesBufferSize ),
 				sm.doneChan)
 			sm.orders.Store(om.GetParentOrderId(), om)
 
@@ -77,7 +80,7 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 }
 
 func (s *strategyManager) GetExecutionParametersMetaData(_ context.Context, empty *model.Empty) (*executionvenue.ExecParamsMetaDataJson, error) {
-	panic("implement me")
+	return nil, fmt.Errorf("not implemented for strategy manager")
 }
 
 func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executionvenue.CreateAndRouteOrderParams) (*executionvenue.OrderId, error) {
@@ -88,7 +91,7 @@ func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executi
 	}
 
 	om, err := NewStrategyFromCreateParams(id.String(), params, s.id, s.store.Write, s.orderRouter,
-		s.childOrderUpdates.NewOrderStream(id.String(), ChildUpdatesBufferSize), s.doneChan)
+		s.childOrderUpdates.NewOrderStream(id.String(), s.inboundChildUpdatesBufferSize), s.doneChan)
 
 	if err != nil {
 		return nil, err

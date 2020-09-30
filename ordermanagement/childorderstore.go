@@ -7,7 +7,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	logger "log"
 	"os"
-	"time"
 )
 
 type ChildOrder struct {
@@ -22,17 +21,9 @@ type orderReader interface {
 
 var errLog = logger.New(os.Stderr, logger.Prefix(), logger.Flags())
 
-func GetChildOrders(id string, kafkaBrokerUrls []string, bufferSize int) (<-chan ChildOrder, error) {
+func GetChildOrders(id string, kafkaReaderConfig kafka.ReaderConfig, bufferSize int) (<-chan ChildOrder, error) {
 
-	topic := "orders"
-
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        kafkaBrokerUrls,
-		Topic:          topic,
-		ReadBackoffMin: 100 * time.Millisecond,
-		ReadBackoffMax: 200 * time.Millisecond,
-		MaxWait:        150 * time.Millisecond,
-	})
+	reader := kafka.NewReader(kafkaReaderConfig)
 
 	isChildOrder := func(order *model.Order) bool {
 		return id == order.GetOriginatorId()

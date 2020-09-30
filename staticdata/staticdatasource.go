@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	services "github.com/ettec/otp-common/api/staticdataservice"
+	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/k8s"
 	"github.com/ettec/otp-common/model"
 	"google.golang.org/grpc"
@@ -43,6 +44,10 @@ type GetStaticDataServiceClientFn = func() (services.StaticDataServiceClient, Gr
 
 func NewStaticDataSource(external bool) (*listingSource, error) {
 
+	responseBufSize := bootstrap.GetOptionalIntEnvVar("STATICDATASOURCE_RESPONSE_BUFFER_SIZE", 10000)
+	grpcMaxReconnectDelay := time.Duration(bootstrap.GetOptionalIntEnvVar("STATICDATASOURCE_GRPC_MAX_RECONNECT_DELAY_SECS",
+		120))*time.Second
+
 	appLabel := "static-data-service"
 
 	targetAddress, err := k8s.GetServiceAddress(appLabel)
@@ -52,7 +57,7 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 
 	return newStaticDataSource(func() (client services.StaticDataServiceClient, connection GrpcConnection, err error) {
 		log.Println("static data service address:" + targetAddress)
-		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(120*time.Second))
+		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(grpcMaxReconnectDelay))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -60,7 +65,7 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 		sdc := services.NewStaticDataServiceClient(conn)
 
 		return sdc, conn, nil
-	}, 10000)
+	}, responseBufSize)
 }
 
 func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponseBufSize int) (*listingSource, error) {

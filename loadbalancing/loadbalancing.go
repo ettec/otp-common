@@ -1,3 +1,4 @@
+// Common utility functions used in load balancing.
 package loadbalancing
 
 import (

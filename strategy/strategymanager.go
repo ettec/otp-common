@@ -35,6 +35,8 @@ type strategyManager struct {
 	inboundChildUpdatesBufferSize int
 }
 
+// StrategyManager is responsible for the creation and recovery of new strategy instances and for forwarding requests
+// to a strategy service to the target strategy.
 func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, childOrderUpdates ChildOrderUpdates,
 	orderRouter executionvenue.ExecutionVenueClient, executeFn func(om *Strategy)) *strategyManager {
 

@@ -89,6 +89,8 @@ func (s *serviceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOptio
 	}, nil
 }
 
+// A quote stream provides a channel of quotes and a method to subscribe to quotes.  This method return a quote
+// stream that sources quote data from a market data service.
 func NewQuoteStreamFromMdService(id string, targetAddress string, maxReconnectInterval time.Duration,
 	quoteBufferSize int) (*mdsQuoteStream, error) {
 

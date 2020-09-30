@@ -1,3 +1,4 @@
+// Utility functions to read environment variables and set defaults.
 package bootstrap
 
 import (

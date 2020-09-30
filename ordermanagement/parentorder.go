@@ -19,6 +19,8 @@ type ParentOrder struct {
 	childOrdersRecovered bool
 }
 
+// Parent order has a one to many relationship to its child orders.  The parent aggregates and summarises state across
+// its children.S
 func NewParentOrder(order model.Order) *ParentOrder {
 
 	childOrderRefs := map[string]model.Ref{}

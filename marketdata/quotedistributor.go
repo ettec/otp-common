@@ -62,6 +62,8 @@ type quoteDistributor struct {
 	errLog              *log.Logger
 }
 
+
+// A quote distributor fans out quote data sourced from a quote stream to multiple clients.
 func NewQuoteDistributor(stream MdsQuoteStream, sendBufferSize int) *quoteDistributor {
 	q := &quoteDistributor{
 		listingToStreams:    map[int32][]chan<- *model.ClobQuote{},

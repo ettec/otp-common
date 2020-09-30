@@ -13,6 +13,7 @@ type OrderCache struct {
 	cache map[string]*model.Order
 }
 
+// In memory cache of the latest order state backed by a store.
 func NewOrderCache(store orderstore.OrderStore, ownerId string) (*OrderCache, error) {
 	orderCache := OrderCache{
 		store: store,

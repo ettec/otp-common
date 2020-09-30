@@ -1,3 +1,6 @@
+// Types and functions to be used to create execution trading strategies.  To understand how to use the code in this
+// package see the examples strategies at https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/smart-router
+// and https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/vwap-strategy.
 package strategy
 
 import (

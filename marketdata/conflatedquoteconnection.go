@@ -1,3 +1,4 @@
+// Contains types to assist in building services that handle market data.
 package marketdata
 
 import (
@@ -46,6 +47,7 @@ func (c *conflatedQuoteConnection) GetId() string {
 	return c.id
 }
 
+//
 func NewConflatedQuoteConnection(id string, stream MdsQuoteStream, out chan<- *model.ClobQuote,
 	maxSubscriptions int) *conflatedQuoteConnection {
 

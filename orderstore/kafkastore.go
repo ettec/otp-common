@@ -1,3 +1,4 @@
+// Implementations of stores used to store order updates.
 package orderstore
 
 import (

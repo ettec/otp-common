@@ -42,6 +42,7 @@ type GrpcConnection interface {
 
 type GetStaticDataServiceClientFn = func() (services.StaticDataServiceClient, GrpcConnection, error)
 
+
 func NewStaticDataSource(external bool) (*listingSource, error) {
 
 	responseBufSize := bootstrap.GetOptionalIntEnvVar("STATICDATASOURCE_RESPONSE_BUFFER_SIZE", 10000)

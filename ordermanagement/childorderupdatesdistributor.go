@@ -48,6 +48,7 @@ func (d *childOrderUpdatesDistributor) NewOrderStream(parentOrderId string, buff
 	return newChildOrderStream(parentOrderId, bufferSize, d)
 }
 
+// A child order updates distributor is used to fan out updates to parent orders.
 func NewChildOrderUpdatesDistributor(updates <-chan ChildOrder) *childOrderUpdatesDistributor {
 
 	idToChan := map[string]chan *model.Order{}

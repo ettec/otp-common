@@ -43,6 +43,8 @@ func (c *conflatedQuoteStream) Close() {
 	c.stream.Close()
 }
 
+// Conflates the quotes from a stream such that when the client reads the quote for a given listing the latest version
+// of the quote will be returned.
 func NewConflatedQuoteStream(stream MdsQuoteStream, out chan<- *model.ClobQuote, capacity int) *conflatedQuoteStream {
 	c := &conflatedQuoteStream{
 		stream: stream, outChan: out, closeChan: make(chan bool),

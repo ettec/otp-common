@@ -1,3 +1,4 @@
+// Types and functions to be used by services that manage orders.
 package ordermanagement
 
 import (
@@ -21,6 +22,7 @@ type orderReader interface {
 
 var errLog = logger.New(os.Stderr, logger.Prefix(), logger.Flags())
 
+// Returns a channel of orders whose originator id matches the given order id and are thus children of the order.
 func GetChildOrders(id string, kafkaReaderConfig kafka.ReaderConfig, bufferSize int) (<-chan ChildOrder, error) {
 
 	reader := kafka.NewReader(kafkaReaderConfig)

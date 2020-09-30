@@ -20,9 +20,12 @@ import (
 	"time"
 )
 
+// See the examples referenced in the package doc to see how to make use of this to write a new strategy type.
 type Strategy struct {
-	// These two channels must be checked and handled as part of the event loop
+	// This channel must be checked and handled as part of the select statement in the strategies event loop
 	CancelChan           chan string
+
+	// This channel must be checked and handled as part of the select statement in the strategies event loop
 	ChildOrderUpdateChan <-chan *model.Order
 
 	ExecVenueId      string
@@ -157,6 +160,8 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 	return nil
 }
 
+
+// This func must be called in the strategies event handling loop.
 func (om *Strategy) CheckIfDone() (done bool, err error) {
 	done = false
 	err = om.persistParentOrderChanges()

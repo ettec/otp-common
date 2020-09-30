@@ -2,10 +2,7 @@ package loadbalancing
 
 import (
 	"fmt"
-	"github.com/ettec/otp-common/k8s"
 	v12 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"log"
 	"strconv"
 	"strings"
 )
@@ -20,34 +17,6 @@ type BalancingStatefulPod struct {
 	Ordinal       int
 	Name          string
 	Mic string
-}
-
-func GetMicToStatefulPodAddresses(serviceType string) (map[string][]*BalancingStatefulPod, error) {
-	micToTargetAddress := map[string][]*BalancingStatefulPod{}
-
-	clientSet := k8s.GetK8sClientSet(false)
-
-	namespace := "default"
-
-	list, err := clientSet.CoreV1().Pods(namespace).List(v1.ListOptions{
-		LabelSelector: "servicetype=" + serviceType,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	log.Printf("found %v stateful pods with service type %v", len(list.Items), serviceType)
-
-	for _, pod := range list.Items {
-		 bsp,  err := GetBalancingStatefulPod(pod)
-		if err != nil {
-			return nil, err
-		}
-
-		micToTargetAddress[bsp.Mic] = append(micToTargetAddress[bsp.Mic], bsp)
-	}
-	return micToTargetAddress, nil
 }
 
 func GetBalancingStatefulPod(pod v12.Pod) ( *BalancingStatefulPod,  error) {

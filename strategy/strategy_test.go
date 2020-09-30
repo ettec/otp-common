@@ -426,7 +426,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 		for {
 			done, err := om.CheckIfDone()
 			if err != nil {
-				om.errLog.Printf("failed to check if done, cancelling order:%v", err)
+				om.ErrLog.Printf("failed to check if done, cancelling order:%v", err)
 				om.Cancel()
 			}
 

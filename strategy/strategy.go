@@ -24,8 +24,8 @@ type Strategy struct {
 
 	ExecVenueId      string
 	ParentOrder      *ordermanagement.ParentOrder
-	errLog           *log.Logger
-	log              *log.Logger
+	ErrLog           *log.Logger
+	Log              *log.Logger
 	lastStoredOrder  []byte
 	store            func(*model.Order) error
 	orderRouter      executionvenue.ExecutionVenueClient
@@ -65,8 +65,8 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 		childOrderStream:     childOrderStream,
 		ChildOrderUpdateChan: childOrderStream.GetStream(),
 		doneChan:             doneChan,
-		errLog:               log.New(os.Stderr, "order:"+po.Id+" ", log.Flags()),
-		log:				log.New(log.Writer(), "order:"+po.Id+" ", log.Flags()),
+		ErrLog:               log.New(os.Stderr, "order:"+po.Id+" ", log.Flags()),
+		Log:                  log.New(log.Writer(), "order:"+po.Id+" ", log.Flags()),
 	}
 }
 
@@ -80,7 +80,7 @@ func (om *Strategy) GetParentOrderId() string {
 
 func (om *Strategy) CancelParentOrder() error {
 	if !om.ParentOrder.IsTerminalState() {
-		om.log.Print("cancelling order")
+		om.Log.Print("cancelling order")
 		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
 
 		if err != nil {
@@ -174,7 +174,7 @@ func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 		_, err := om.ParentOrder.OnChildOrderUpdate(co)
 		return err
 	} else {
-		om.errLog.Printf("child order update chan unexpectedly closed, cancelling order")
+		om.ErrLog.Printf("child order update chan unexpectedly closed, cancelling order")
 		om.Cancel()
 	}
 
@@ -215,7 +215,7 @@ func (om *Strategy) persistParentOrderChanges() error {
 }
 
 func (om *Strategy) CancelOrderWithErrorMsg(msg string) {
-	om.log.Printf("Cancelling order:%v", msg)
+	om.Log.Printf("Cancelling order:%v", msg)
 	om.CancelChan <- msg
 }
 

@@ -273,7 +273,7 @@ func TestStrategyCompletesWhenChildOrdersFilled(t *testing.T) {
 
 	doneId := <-doneChan
 
-	if doneId != om.GetParentOrderId() {
+	if doneId != om.getStrategyOrderId() {
 		t.FailNow()
 	}
 
@@ -440,14 +440,14 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 					om.ParentOrder.ErrorMessage = errMsg
 				}
 
-				err := om.CancelParentOrder()
+				err := om.cancelStrategyOrder()
 				if err != nil {
-					log.Panicf("failed to cancel order:%v", err)
+					log.Panicf("failed to Cancel order:%v", err)
 				}
 			case co, ok := <-om.ChildOrderUpdateChan:
 				om.OnChildOrderUpdate(ok, co)
 			case q := <-sendChildQty:
-				om.SendChildOrder(om.ParentOrder.Side, q, om.ParentOrder.Price, listing)
+				om.SendChildOrder(om.ParentOrder.Side, q, om.ParentOrder.Price, listing.Id, listing.GetMarket().Mic, "")
 			}
 		}
 	}()

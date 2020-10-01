@@ -75,51 +75,14 @@ func (om *Strategy) Cancel() {
 	om.CancelChan <- ""
 }
 
-func (om *Strategy) GetParentOrderId() string {
-	return om.ParentOrder.GetId()
+func (om *Strategy) CancelWithErrorMsg(msg string) {
+	om.Log.Printf("Cancelling strategy order:%v", msg)
+	om.CancelChan <- msg
 }
 
-func (om *Strategy) CancelParentOrder() error {
-	if !om.ParentOrder.IsTerminalState() {
-		om.Log.Print("cancelling order")
-		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
-
-		if err != nil {
-			return fmt.Errorf("failed to cancel order:%w", err)
-		}
-
-		pendingChildOrderCancels := false
-		for _, co := range om.ParentOrder.ChildOrders {
-			if !co.IsTerminalState() {
-				pendingChildOrderCancels = true
-				_, err := om.orderRouter.CancelOrder(context.Background(), &executionvenue.CancelOrderParams{
-					OrderId: co.Id,
-					ListingId: co.ListingId,
-					OwnerId: co.OwnerId,
-				})
-
-				if err != nil {
-					return fmt.Errorf("failed to cancel child order:%w", err)
-				}
-
-			}
-
-		}
-
-		if !pendingChildOrderCancels {
-			err := om.ParentOrder.SetStatus(model.OrderStatus_CANCELLED)
-			if err != nil {
-				return fmt.Errorf("failed to set status of parent order: %w", err)
-			}
-
-		}
-
-	}
-
-	return nil
-}
-
-func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, price *model.Decimal64, listing *model.Listing) error {
+// Sends a child order to the given destination and ensures the parent order cannot become over exposed.
+func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, price *model.Decimal64, listingId int32,
+	destination string, execParametersJson string) error {
 
 	if quantity.GreaterThan(om.ParentOrder.GetAvailableQty()) {
 		return fmt.Errorf("cannot send child order for %v as it exceeds the available quantity on the parent order: %v", quantity,
@@ -130,12 +93,13 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 		OrderSide:         side,
 		Quantity:          quantity,
 		Price:             price,
-		ListingId:         listing.Id,
-		Destination:       listing.Market.Mic,
+		ListingId:         listingId,
+		Destination:       destination,
 		OriginatorId:      om.ExecVenueId,
-		OriginatorRef:     om.GetParentOrderId(),
+		OriginatorRef:     om.getStrategyOrderId(),
 		RootOriginatorId:  om.ParentOrder.RootOriginatorId,
 		RootOriginatorRef: om.ParentOrder.RootOriginatorRef,
+		ExecParametersJson: execParametersJson,
 	}
 
 	id, err := om.orderRouter.CreateAndRouteOrder(context.Background(), params)
@@ -145,18 +109,21 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 	}
 
 	pendingOrder := model.NewOrder(id.OrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
-		om.ExecVenueId, om.GetParentOrderId(), om.ParentOrder.RootOriginatorId, om.ParentOrder.RootOriginatorRef, listing.Market.Mic)
+		om.ExecVenueId, om.getStrategyOrderId(), om.ParentOrder.RootOriginatorId, om.ParentOrder.RootOriginatorRef, destination)
 
-	// First persisted orders start at version 0, this is a placeholder until the first child order update is received
+	// Orders start at version 0, this is a placeholder for the pending order until the first child order update is received
 	pendingOrder.Version = -1
 
-	om.ParentOrder.OnChildOrderUpdate(pendingOrder)
+	_, err = om.ParentOrder.OnChildOrderUpdate(pendingOrder)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 
-// This func must be called in the strategies event handling loop.
+// This func must be called in the strategies event handling loop, see example strategies as per package documentation.
 func (om *Strategy) CheckIfDone() (done bool, err error) {
 	done = false
 	err = om.persistParentOrderChanges()
@@ -217,7 +184,46 @@ func (om *Strategy) persistParentOrderChanges() error {
 	return err
 }
 
-func (om *Strategy) CancelOrderWithErrorMsg(msg string) {
-	om.Log.Printf("Cancelling order:%v", msg)
-	om.CancelChan <- msg
+func (om *Strategy) getStrategyOrderId() string {
+	return om.ParentOrder.GetId()
+}
+
+func (om *Strategy) cancelStrategyOrder() error {
+	if !om.ParentOrder.IsTerminalState() {
+		om.Log.Print("cancelling order")
+		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
+
+		if err != nil {
+			return fmt.Errorf("failed to Cancel order:%w", err)
+		}
+
+		pendingChildOrderCancels := false
+		for _, co := range om.ParentOrder.ChildOrders {
+			if !co.IsTerminalState() {
+				pendingChildOrderCancels = true
+				_, err := om.orderRouter.CancelOrder(context.Background(), &executionvenue.CancelOrderParams{
+					OrderId: co.Id,
+					ListingId: co.ListingId,
+					OwnerId: co.OwnerId,
+				})
+
+				if err != nil {
+					return fmt.Errorf("failed to Cancel child order:%w", err)
+				}
+
+			}
+
+		}
+
+		if !pendingChildOrderCancels {
+			err := om.ParentOrder.SetStatus(model.OrderStatus_CANCELLED)
+			if err != nil {
+				return fmt.Errorf("failed to set status of parent order: %w", err)
+			}
+
+		}
+
+	}
+
+	return nil
 }

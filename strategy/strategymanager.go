@@ -71,7 +71,7 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 			om := NewStrategyFromParentOrder(order, sm.store.Write, sm.id, sm.orderRouter,
 				sm.childOrderUpdates.NewOrderStream(order.Id, sm.inboundChildUpdatesBufferSize ),
 				sm.doneChan)
-			sm.orders.Store(om.GetParentOrderId(), om)
+			sm.orders.Store(om.getStrategyOrderId(), om)
 
 			sm.executeFn(om)
 		}
@@ -99,7 +99,7 @@ func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executi
 		return nil, err
 	}
 
-	s.orders.Store(om.GetParentOrderId(), om)
+	s.orders.Store(om.getStrategyOrderId(), om)
 
 	s.executeFn(om)
 

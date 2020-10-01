@@ -52,7 +52,7 @@ func Test_StrategyCancel(t *testing.T) {
 	parentOrderUpdatesChan, _, cancelOrderOutboundParams, childOrdersIn, _,
 	listing, om, doneChan, child1Id, child2Id := setupStrategyAndSendTwoChildOrders(t)
 
-	om.Cancel()
+	om.CancelChan <- ""
 
 	cp1 := <-cancelOrderOutboundParams
 
@@ -121,7 +121,7 @@ func Test_cancelOfUnexposedOrder(t *testing.T) {
 		t.Fatalf("parent order should not be exposed")
 	}
 
-	om.Cancel()
+	om.CancelChan <- ""
 
 	order = <-parentOrderUpdatesChan
 
@@ -185,7 +185,7 @@ func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
 		t.Fatalf("parent order should be only partly exposed")
 	}
 
-	om.Cancel()
+	om.CancelChan <- ""
 
 	cp := <-cancelOrderOutboundParams
 
@@ -427,7 +427,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 			done, err := om.CheckIfDone()
 			if err != nil {
 				om.ErrLog.Printf("failed to check if done, cancelling order:%v", err)
-				om.Cancel()
+				om.CancelChan <- ""
 			}
 
 			if done {
@@ -440,7 +440,7 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 					om.ParentOrder.ErrorMessage = errMsg
 				}
 
-				err := om.cancelStrategyOrder()
+				err := om.CancelChildOrdersAndStrategyOrder()
 				if err != nil {
 					log.Panicf("failed to Cancel order:%v", err)
 				}

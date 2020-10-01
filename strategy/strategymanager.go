@@ -116,7 +116,7 @@ func (s *strategyManager) CancelOrder(_ context.Context, params *executionvenue.
 
 	if val, exists := s.orders.Load(params.OrderId); exists {
 		om := val.(*Strategy)
-		om.Cancel()
+		om.CancelChan <- ""
 		return &model.Empty{}, nil
 	} else {
 		return nil, fmt.Errorf("no order found for id:%v", params.OrderId)

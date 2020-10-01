@@ -71,14 +71,7 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 	}
 }
 
-func (om *Strategy) Cancel() {
-	om.CancelChan <- ""
-}
 
-func (om *Strategy) CancelWithErrorMsg(msg string) {
-	om.Log.Printf("Cancelling strategy order:%v", msg)
-	om.CancelChan <- msg
-}
 
 // Sends a child order to the given destination and ensures the parent order cannot become over exposed.
 func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, price *model.Decimal64, listingId int32,
@@ -139,56 +132,22 @@ func (om *Strategy) CheckIfDone() (done bool, err error) {
 	return done, nil
 }
 
+// Must be called in response to receipt of a child order update in the strategy's event processing loop as per example strategies
 func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 	if ok {
 		_, err := om.ParentOrder.OnChildOrderUpdate(co)
 		return err
 	} else {
-		om.ErrLog.Printf("child order update chan unexpectedly closed, cancelling order")
-		om.Cancel()
+		msg := "child order update chan unexpectedly closed, cancelling order"
+		om.ErrLog.Printf(msg)
+		om.CancelChan <- msg
 	}
 
 	return nil
 }
 
-func (om *Strategy) persistParentOrderChanges() error {
-
-	orderAsBytes, err := proto.Marshal(&om.ParentOrder.Order)
-
-	if !bytes.Equal(om.lastStoredOrder, orderAsBytes) {
-
-		if om.lastStoredOrder != nil {
-			om.ParentOrder.Version = om.ParentOrder.Version + 1
-		}
-
-		toStore, err := proto.Marshal(&om.ParentOrder.Order)
-		if err != nil {
-			return err
-		}
-
-		om.lastStoredOrder = toStore
-
-		orderCopy := &model.Order{}
-		err = proto.Unmarshal(toStore, orderCopy)
-		if err != nil {
-			return err
-		}
-
-		err = om.store(orderCopy)
-		if err != nil {
-			return err
-		}
-
-	}
-
-	return err
-}
-
-func (om *Strategy) getStrategyOrderId() string {
-	return om.ParentOrder.GetId()
-}
-
-func (om *Strategy) cancelStrategyOrder() error {
+// Should only be called from with the strategy's event processing loop as per the example strategies
+func (om *Strategy) CancelChildOrdersAndStrategyOrder() error {
 	if !om.ParentOrder.IsTerminalState() {
 		om.Log.Print("cancelling order")
 		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
@@ -227,3 +186,42 @@ func (om *Strategy) cancelStrategyOrder() error {
 
 	return nil
 }
+
+
+func (om *Strategy) persistParentOrderChanges() error {
+
+	orderAsBytes, err := proto.Marshal(&om.ParentOrder.Order)
+
+	if !bytes.Equal(om.lastStoredOrder, orderAsBytes) {
+
+		if om.lastStoredOrder != nil {
+			om.ParentOrder.Version = om.ParentOrder.Version + 1
+		}
+
+		toStore, err := proto.Marshal(&om.ParentOrder.Order)
+		if err != nil {
+			return err
+		}
+
+		om.lastStoredOrder = toStore
+
+		orderCopy := &model.Order{}
+		err = proto.Unmarshal(toStore, orderCopy)
+		if err != nil {
+			return err
+		}
+
+		err = om.store(orderCopy)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return err
+}
+
+func (om *Strategy) getStrategyOrderId() string {
+	return om.ParentOrder.GetId()
+}
+

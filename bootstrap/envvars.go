@@ -10,7 +10,7 @@ import (
 func GetIntEnvVar(key string) int {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Fatalf("missing required env var %v", key)
+		log.Panicf("missing required env var %v", key)
 	}
 
 	var err error
@@ -27,7 +27,7 @@ func GetIntEnvVar(key string) int {
 func GetEnvVar(key string) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Fatalf("missing required env var %v", key)
+		log.Panicf("missing required env var %v", key)
 	}
 
 	log.Printf("%v set to %v", key, value)
@@ -66,7 +66,7 @@ func GetOptionalBoolEnvVar(key string, def bool) bool {
 func GetBoolEnvVar(key string) bool {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Fatalf("missing required env var %v", key)
+		log.Panicf("missing required env var %v", key)
 	}
 
 	var err error

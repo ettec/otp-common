@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 	"log"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type ListingSource interface {
 }
 
 type listingSource struct {
+	cache *sync.Map
 	sdcTaskChan chan staticDataServiceTask
 	errLog      *log.Logger
 }
@@ -73,6 +75,7 @@ func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponse
 	s := &listingSource{
 		sdcTaskChan: make(chan staticDataServiceTask, sdsResponseBufSize),
 		errLog:      log.New(os.Stdout, log.Prefix(), log.Flags()),
+		cache: &sync.Map{},
 	}
 
 	sdc, conn, err := getConnection()
@@ -110,7 +113,14 @@ func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponse
 
 type staticDataServiceTask func(sdc services.StaticDataServiceClient) error
 
-func (s *listingSource) GetListing(listingId int32, result chan<- *model.Listing) {
+func (s *listingSource) GetListing(listingId int32, resultChan chan<- *model.Listing) {
+	if value, ok := s.cache.Load(listingId); ok {
+		listing := value.(*model.Listing)
+		go func() {
+			resultChan <-listing
+		}()
+	}
+
 	s.sdcTaskChan <- func(sdc services.StaticDataServiceClient) error {
 		listing, err := sdc.GetListing(context.Background(), &services.ListingId{
 			ListingId: listingId,
@@ -124,7 +134,8 @@ func (s *listingSource) GetListing(listingId int32, result chan<- *model.Listing
 				s.errLog.Printf("no listing found for id:%v", listingId)
 			}
 		} else {
-			result <- listing
+			s.cache.Store(listing.GetId(), listing)
+			resultChan <- listing
 		}
 
 		return nil

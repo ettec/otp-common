@@ -42,7 +42,7 @@ type GrpcConnection interface {
 	WaitForStateChange(ctx context.Context, sourceState connectivity.State) bool
 }
 
-type GetStaticDataServiceClientFn = func() (services.StaticDataServiceClient, GrpcConnection, error)
+
 
 
 func NewStaticDataSource(external bool) (*listingSource, error) {
@@ -71,7 +71,7 @@ func NewStaticDataSource(external bool) (*listingSource, error) {
 	}, responseBufSize)
 }
 
-func newStaticDataSource(getConnection GetStaticDataServiceClientFn, sdsResponseBufSize int) (*listingSource, error) {
+func newStaticDataSource(getConnection func() (services.StaticDataServiceClient, GrpcConnection, error), sdsResponseBufSize int) (*listingSource, error) {
 	s := &listingSource{
 		sdcTaskChan: make(chan staticDataServiceTask, sdsResponseBufSize),
 		errLog:      log.New(os.Stdout, log.Prefix(), log.Flags()),

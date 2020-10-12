@@ -119,6 +119,7 @@ func (s *listingSource) GetListing(listingId int32, resultChan chan<- *model.Lis
 		go func() {
 			resultChan <-listing
 		}()
+		return
 	}
 
 	s.sdcTaskChan <- func(sdc services.StaticDataServiceClient) error {

@@ -1,2 +1,2 @@
 # otp-common
-Common code that is used across open trading platform services
+Go module containing common code used by the services of the [Open Trading Platform](https://github.com/ettec/open-trading-platform)

@@ -2,32 +2,32 @@ package model
 
 import "testing"
 
-func TestListing_RoundToTickSize(t *testing.T) {
-
-	tst := &TickSizeTable{
-		Entries: []*TickSizeEntry{
-			{
-				LowerPriceBound: &Decimal64{Mantissa: -100, Exponent: 0},
-				UpperPriceBound: &Decimal64{Mantissa: -10, Exponent: 0},
-				TickSize:        &Decimal64{Mantissa: 1, Exponent: -1},
-			},
-			{
-				LowerPriceBound: &Decimal64{Mantissa: -10, Exponent: 0},
-				UpperPriceBound: &Decimal64{Mantissa: 10, Exponent: 0},
-				TickSize:        &Decimal64{Mantissa: 1, Exponent: -2},
-			},
-			{
-				LowerPriceBound: &Decimal64{Mantissa: 10, Exponent: 0},
-				UpperPriceBound: &Decimal64{Mantissa: 100, Exponent: 0},
-				TickSize:        &Decimal64{Mantissa: 1, Exponent: -1},
-			},
-			{
-				LowerPriceBound: &Decimal64{Mantissa: 100, Exponent: 0},
-				UpperPriceBound: &Decimal64{Mantissa: 1000, Exponent: 0},
-				TickSize:        &Decimal64{Mantissa: 1, Exponent: 0},
-			},
+var tickSizeTable  = &TickSizeTable{
+	Entries: []*TickSizeEntry{
+		{
+			LowerPriceBound: &Decimal64{Mantissa: -100, Exponent: 0},
+			UpperPriceBound: &Decimal64{Mantissa: -10, Exponent: 0},
+			TickSize:        &Decimal64{Mantissa: 1, Exponent: -1},
 		},
-	}
+		{
+			LowerPriceBound: &Decimal64{Mantissa: -10, Exponent: 0},
+			UpperPriceBound: &Decimal64{Mantissa: 10, Exponent: 0},
+			TickSize:        &Decimal64{Mantissa: 1, Exponent: -2},
+		},
+		{
+			LowerPriceBound: &Decimal64{Mantissa: 10, Exponent: 0},
+			UpperPriceBound: &Decimal64{Mantissa: 100, Exponent: 0},
+			TickSize:        &Decimal64{Mantissa: 1, Exponent: -1},
+		},
+		{
+			LowerPriceBound: &Decimal64{Mantissa: 100, Exponent: 0},
+			UpperPriceBound: &Decimal64{Mantissa: 1000, Exponent: 0},
+			TickSize:        &Decimal64{Mantissa: 1, Exponent: 0},
+		},
+	},
+}
+
+func TestListing_GetTickSizeForPriceLevel(t *testing.T) {
 
 	tests := []struct {
 		name    string
@@ -36,38 +36,77 @@ func TestListing_RoundToTickSize(t *testing.T) {
 		result  *Decimal64
 		wantErr bool
 	}{
-		{"test", tst, 9.13211,
+		{"test", tickSizeTable, 9.13211,
+			&Decimal64{Mantissa: 1, Exponent: -2}, false},
+		{"test", tickSizeTable, 253.4,
+			&Decimal64{Mantissa: 1, Exponent: 0}, false},
+		{"test", tickSizeTable, 1253.4,
+			nil, true},
+		{"test", tickSizeTable, -125.4,
+			nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Listing{
+				TickSize: tt.tst,
+			}
+
+			d, err := m.GetTickSizeForPriceLevel(tt.price)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetTickSizeForPriceLevel() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !d.Equal(tt.result) {
+				t.Errorf("GetTickSizeForPriceLevel() tickSize = %v, wanted %v", d, tt.result)
+			}
+
+		})
+	}
+
+
+}
+
+func TestListing_RoundToTickSize(t *testing.T) {
+
+	tests := []struct {
+		name    string
+		tst     *TickSizeTable
+		price   float64
+		result  *Decimal64
+		wantErr bool
+	}{
+		{"test", tickSizeTable, 9.13211,
 			&Decimal64{Mantissa: 913, Exponent: -2}, false},
-		{"test", tst, 19.132,
+		{"test", tickSizeTable, 19.132,
 			&Decimal64{Mantissa: 191, Exponent: -1}, false},
-		{"test", tst, 200.1,
+		{"test", tickSizeTable, 200.1,
 			&Decimal64{Mantissa: 200, Exponent: 0}, false},
-		{"test", tst, -2.1163,
+		{"test", tickSizeTable, -2.1163,
 			&Decimal64{Mantissa: -212, Exponent: -2}, false},
 
-		{"test", tst, 2116.3,
+		{"test", tickSizeTable, 2116.3,
 			nil, true},
 
-		{"test", tst, 9.997,
+		{"test", tickSizeTable, 9.997,
 			&Decimal64{Mantissa: 10, Exponent: 0}, false},
 
-		{"test", tst, 9.9945,
+		{"test", tickSizeTable, 9.9945,
 			&Decimal64{Mantissa: 999, Exponent: -2}, false},
-		{"test", tst, 9.999945,
+		{"test", tickSizeTable, 9.999945,
 			&Decimal64{Mantissa: 10, Exponent: 0}, false},
 
-		{"test", tst, 10.00001,
+		{"test", tickSizeTable, 10.00001,
 			&Decimal64{Mantissa: 10, Exponent: 0}, false},
 
-		{"test", tst, -9.997,
+		{"test", tickSizeTable, -9.997,
 			&Decimal64{Mantissa: -10, Exponent: 0}, false},
 
-		{"test", tst, -9.9945,
+		{"test", tickSizeTable, -9.9945,
 			&Decimal64{Mantissa: -999, Exponent: -2}, false},
-		{"test", tst, -9.999945,
+		{"test", tickSizeTable, -9.999945,
 			&Decimal64{Mantissa: -10, Exponent: 0}, false},
 
-		{"test", tst, -10.00001,
+		{"test", tickSizeTable, -10.00001,
 			&Decimal64{Mantissa: -10, Exponent: 0}, false},
 	}
 	for _, tt := range tests {

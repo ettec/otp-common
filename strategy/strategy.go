@@ -72,8 +72,7 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 }
 
 
-
-// Sends a child order to the given destination and ensures the parent order cannot become over exposed.
+// SendChildOrder Sends a child order to the given destination and ensures the parent order cannot become over exposed.
 func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, price *model.Decimal64, listingId int32,
 	destination string, execParametersJson string) error {
 
@@ -116,7 +115,7 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 }
 
 
-// This func must be called in the strategies event handling loop, see example strategies as per package documentation.
+// CheckIfDone must be called in the strategies event handling loop, see example strategies as per package documentation.
 func (om *Strategy) CheckIfDone() (done bool, err error) {
 	done = false
 	err = om.persistParentOrderChanges()
@@ -132,7 +131,7 @@ func (om *Strategy) CheckIfDone() (done bool, err error) {
 	return done, nil
 }
 
-// Must be called in response to receipt of a child order update in the strategy's event processing loop as per example strategies
+// OnChildOrderUpdate must be called in response to receipt of a child order update in the strategy's event processing loop as per example strategies
 func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 	if ok {
 		_, err := om.ParentOrder.OnChildOrderUpdate(co)
@@ -146,7 +145,7 @@ func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 	return nil
 }
 
-// Should only be called from with the strategy's event processing loop as per the example strategies
+// CancelChildOrdersAndStrategyOrder should only be called from with the strategy's event processing loop as per the example strategies
 func (om *Strategy) CancelChildOrdersAndStrategyOrder() error {
 	if !om.ParentOrder.IsTerminalState() {
 		om.Log.Print("cancelling order")

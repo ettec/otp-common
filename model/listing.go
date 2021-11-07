@@ -25,6 +25,24 @@ func (m *Listing) RoundToNearestTick(price float64) (*Decimal64, error) {
 	return nil, fmt.Errorf("no tick table entry for price:%v", price)
 }
 
+
+func  (m *Listing) GetTickSizeForPriceLevel( price float64) (*Decimal64, error) {
+
+	for _, entry := range m.TickSize.Entries {
+		delta := entry.TickSize.ToFloat() / 1000
+		lowerBound := entry.LowerPriceBound.ToFloat()
+		upperBound := entry.UpperPriceBound.ToFloat()
+
+		if compare(price, lowerBound, delta) >= 0 &&
+			compare(price, upperBound, delta) <= 0 {
+			return  entry.TickSize, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no tick table entry for price:%v", price)
+}
+
+
 func compare(f1 float64, f2 float64, delta float64) int {
 
 	diff := f1 - f2

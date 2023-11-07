@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ettec/otp-common/api/marketdatasource"
 	"github.com/ettec/otp-common/model"
+	"github.com/stretchr/testify/assert"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -87,9 +88,9 @@ func (t testClientStream) RecvMsg(m interface{}) error {
 	panic("implement me")
 }
 
-func Test_marketDataGatewayClient_refreshesForwaredToOut(t *testing.T) {
+func TestMarketDataGatewayClient_refreshesForwaredToOut(t *testing.T) {
 
-	client, stream, conn, _, out := setup(t)
+	client, stream, conn, mdsQuoteStream := setup(t)
 
 	conn.getStateChan <- connectivity.Ready
 
@@ -97,56 +98,45 @@ func Test_marketDataGatewayClient_refreshesForwaredToOut(t *testing.T) {
 
 	stream.refreshChan <- &model.ClobQuote{}
 
-	<-out
+	<-mdsQuoteStream.Chan()
 }
 
-func Test_marketDataGatewayClient_sendsEmptyQuoteForAllListingsOnConnectionError(t *testing.T) {
+func TestMarketDataGatewayClient_sendsEmptyQuoteForAllListingsOnConnectionError(t *testing.T) {
 
-	client, stream, conn, mdc, out := setup(t)
+	client, stream, conn, mdc := setup(t)
 
 	conn.getStateChan <- connectivity.Ready
 
-	mdc.Subscribe(1)
-	mdc.Subscribe(2)
+	err := mdc.Subscribe(1)
+	assert.NoError(t, err)
+	err = mdc.Subscribe(2)
+	assert.NoError(t, err)
 
 	client.streamOutChan <- stream
 
-	stream.refreshChan <- &model.ClobQuote{}
-	<-out
+	stream.refreshChan <- &model.ClobQuote{ListingId: 1}
+	<-mdc.Chan()
 
 	stream.refreshErrChan <- fmt.Errorf("testerror")
-	r := <-out
+	r := <-mdc.Chan()
 
 	if !r.StreamInterrupted {
 		t.FailNow()
 	}
 
-	if r.ListingId != 1 && r.ListingId != 2 {
+	if r.ListingId != 1 {
 		t.FailNow()
 	}
 
 	if len(r.Bids) != 0 || len(r.Offers) != 0 {
-		t.FailNow()
-	}
-
-	r = <-out
-	if r.ListingId != 1 && r.ListingId != 2 {
-		t.FailNow()
-	}
-
-	if len(r.Bids) != 0 || len(r.Offers) != 0 {
-		t.FailNow()
-	}
-
-	if !r.StreamInterrupted {
 		t.FailNow()
 	}
 
 }
 
-func Test_marketDataGatewayClient_testReconnectAfterError(t *testing.T) {
+func TestMarketDataGatewayClient_testReconnectAfterError(t *testing.T) {
 
-	client, stream, conn, toTest, out := setup(t)
+	client, stream, conn, toTest := setup(t)
 
 	conn.getStateChan <- connectivity.Ready
 
@@ -155,10 +145,10 @@ func Test_marketDataGatewayClient_testReconnectAfterError(t *testing.T) {
 	toTest.Subscribe(1)
 
 	stream.refreshChan <- &model.ClobQuote{}
-	<-out
+	<-toTest.Chan()
 
 	stream.refreshErrChan <- fmt.Errorf("testerror")
-	r := <-out
+	r := <-toTest.Chan()
 	if r.StreamInterrupted != true {
 		t.FailNow()
 	}
@@ -171,9 +161,9 @@ func Test_marketDataGatewayClient_testReconnectAfterError(t *testing.T) {
 
 }
 
-func Test_marketDataGatewayClient_resubscribedOnConnect(t *testing.T) {
+func TestMarketDataGatewayClient_resubscribedOnConnect(t *testing.T) {
 
-	client, stream, conn, toTest, _ := setup(t)
+	client, stream, conn, toTest := setup(t)
 
 	toTest.Subscribe(1)
 
@@ -189,8 +179,7 @@ func Test_marketDataGatewayClient_resubscribedOnConnect(t *testing.T) {
 
 }
 
-func setup(t *testing.T) (testClient, testClientStream, testConnection, *mdsQuoteStream, chan *model.ClobQuote) {
-	out := make(chan *model.ClobQuote)
+func setup(t *testing.T) (testClient, testClientStream, testConnection, QuoteStream) {
 
 	client := testClient{
 
@@ -205,14 +194,14 @@ func setup(t *testing.T) (testClient, testClientStream, testConnection, *mdsQuot
 		getStateChan: make(chan connectivity.State),
 	}
 
-	c, err := NewMdsQuoteStreamFromFn("testId", "testTarget", out,
+	c, err := NewMdsQuoteStreamFromFn(context.Background(), "testId", "testTarget", 0,
 		func(targetAddress string) (commonMds, GrpcConnection, error) {
 
-			return &sourceToCommonMds{client:client}, conn, nil
+			return &sourceToCommonMds{client: client}, conn, nil
 		})
 
 	if err != nil {
 		t.FailNow()
 	}
-	return client, stream, conn, c, out
+	return client, stream, conn, c
 }

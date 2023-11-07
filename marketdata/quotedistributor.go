@@ -1,94 +1,85 @@
 package marketdata
 
 import (
+	"context"
 	"github.com/ettec/otp-common/model"
-	"log"
-	"os"
+	"log/slog"
 )
-
-type QuoteDistributor interface {
-	GetNewQuoteStream() MdsQuoteStream
-}
 
 type QuoteSource interface {
 	Subscribe(listingId int)
 }
 
-type subscribeRequest struct {
+type subscription struct {
 	listingId int32
 	out       chan<- *model.ClobQuote
 }
 
-type quoteDistributorQuoteStream struct {
+type DistributorQuoteStream struct {
 	out         chan *model.ClobQuote
-	distributor *quoteDistributor
+	distributor *QuoteDistributor
 }
 
-func newQuoteDistributorQuoteStream(distributor *quoteDistributor) *quoteDistributorQuoteStream {
-	result := &quoteDistributorQuoteStream{make(chan *model.ClobQuote, distributor.sendBufferSize),
-		distributor}
-	return result
-}
-
-func (q *quoteDistributorQuoteStream) Subscribe(listingId int32) {
-
-	q.distributor.subscriptionChan <- subscribeRequest{
+func (q *DistributorQuoteStream) Subscribe(listingId int32) error {
+	q.distributor.subscriptionChan <- subscription{
 		listingId: listingId,
 		out:       q.out,
 	}
-
+	return nil
 }
 
-func (q *quoteDistributorQuoteStream) GetStream() <-chan *model.ClobQuote {
+func (q *DistributorQuoteStream) Chan() <-chan *model.ClobQuote {
 	return q.out
 }
 
-func (q *quoteDistributorQuoteStream) Close() {
+func (q *DistributorQuoteStream) Close() {
 	q.distributor.removeOutChan <- q.out
 }
 
-type subscribeToListing = func(listingId int32)
+type subscribeToListing = func(listingId int32) error
 
-type quoteDistributor struct {
+// QuoteDistributor fans out quote data sourced from a quote stream to multiple clients.
+type QuoteDistributor struct {
 	listingToStreams    map[int32][]chan<- *model.ClobQuote
 	streamToListings    map[chan<- *model.ClobQuote][]int32
 	removeOutChan       chan chan<- *model.ClobQuote
-	subscriptionChan    chan subscribeRequest
+	subscriptionChan    chan subscription
 	lastQuote           map[int32]*model.ClobQuote
 	subscribedFn        subscribeToListing
 	subscribedToListing map[int32]bool
 	sendBufferSize      int
-	log                 *log.Logger
-	errLog              *log.Logger
 }
 
+func NewQuoteDistributor(ctx context.Context, stream QuoteStream, sendBufferSize int) *QuoteDistributor {
 
-// A quote distributor fans out quote data sourced from a quote stream to multiple clients.
-func NewQuoteDistributor(stream MdsQuoteStream, sendBufferSize int) *quoteDistributor {
-	q := &quoteDistributor{
+	q := &QuoteDistributor{
 		listingToStreams:    map[int32][]chan<- *model.ClobQuote{},
 		streamToListings:    map[chan<- *model.ClobQuote][]int32{},
 		removeOutChan:       make(chan chan<- *model.ClobQuote),
-		subscriptionChan:    make(chan subscribeRequest),
+		subscriptionChan:    make(chan subscription),
 		lastQuote:           map[int32]*model.ClobQuote{},
 		subscribedFn:        stream.Subscribe,
 		subscribedToListing: map[int32]bool{},
 		sendBufferSize:      sendBufferSize,
-		log:                 log.New(os.Stdout, "", log.Ltime|log.Lshortfile),
-		errLog:              log.New(os.Stderr, "", log.Ltime|log.Lshortfile),
 	}
 
-	streamChan := stream.GetStream()
+	log := slog.Default()
+	streamChan := stream.Chan()
 
 	go func() {
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case s := <-q.subscriptionChan:
 
 				subscribeToQuotes := q.listingToStreams[s.listingId] == nil
 				if subscribeToQuotes {
-					go q.subscribedFn(s.listingId)
+					if err := q.subscribedFn(s.listingId); err != nil {
+						log.Error("failed to subscribe to listing", "listingId", s.listingId, "error", err)
+					}
+
 				}
 
 				streamSubscribed := false
@@ -134,6 +125,8 @@ func NewQuoteDistributor(stream MdsQuoteStream, sendBufferSize int) *quoteDistri
 	return q
 }
 
-func (q *quoteDistributor) GetNewQuoteStream() MdsQuoteStream {
-	return newQuoteDistributorQuoteStream(q)
+func (q *QuoteDistributor) NewQuoteStream() *DistributorQuoteStream {
+	result := &DistributorQuoteStream{make(chan *model.ClobQuote, q.sendBufferSize),
+		q}
+	return result
 }

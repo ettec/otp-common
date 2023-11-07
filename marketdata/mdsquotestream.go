@@ -2,35 +2,21 @@ package marketdata
 
 import (
 	"context"
+	"fmt"
 	api "github.com/ettec/otp-common/api/marketdataservice"
 	"github.com/ettec/otp-common/api/marketdatasource"
 	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"log/slog"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
-	"log"
-	"os"
 )
-
-type mdsQuoteStream struct {
-	conn              *grpc.ClientConn
-	out               chan *model.ClobQuote
-	subscriptionsChan chan int32
-	closeReaderChan   chan bool
-	closeWriterChan   chan bool
-	log               *log.Logger
-	errLog            *log.Logger
-}
-
-var outboundSubscriptions = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "outbound_subscriptions",
-	Help: "The number of outbound subscriptions",
-})
 
 var quotesReceived = promauto.NewCounter(prometheus.CounterOpts{
 	Name: "quotes_received",
@@ -45,10 +31,10 @@ type GrpcConnection interface {
 }
 
 type commonMds interface {
-	Connect(ctx context.Context, opts ...grpc.CallOption) (commonMdsClient, error)
+	Connect(ctx context.Context, opts ...grpc.CallOption) (mdsClient, error)
 }
 
-type commonMdsClient interface {
+type mdsClient interface {
 	Subscribe(int32) error
 	Recv() (*model.ClobQuote, error)
 }
@@ -76,7 +62,7 @@ type serviceToCommonMds struct {
 	client       api.MarketDataServiceClient
 }
 
-func (s *serviceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOption) (commonMdsClient, error) {
+func (s *serviceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOption) (mdsClient, error) {
 	cc, err := s.client.Connect(ctx, &api.MdsConnectRequest{SubscriberId: s.subscriberId}, opts...)
 	if err != nil {
 		return nil, err
@@ -89,10 +75,21 @@ func (s *serviceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOptio
 	}, nil
 }
 
-// A quote stream provides a channel of quotes and a method to subscribe to quotes.  This method return a quote
+// MdsQuoteStream wraps the API of a market data service such that it conforms to the QuoteStream interface.
+type MdsQuoteStream struct {
+	conn             *grpc.ClientConn
+	subscriptionLock sync.Mutex
+	client           mdsClient
+	subscriptions    map[int32]bool
+	out              chan *model.ClobQuote
+	cancelContext    func()
+	log              *slog.Logger
+}
+
+// NewQuoteStreamFromMarketDataService provides a channel of quotes and a method to subscribe to quotes.  This method return a quote
 // stream that sources quote data from a market data service.
-func NewQuoteStreamFromMdService(id string, targetAddress string, maxReconnectInterval time.Duration,
-	quoteBufferSize int) (*mdsQuoteStream, error) {
+func NewQuoteStreamFromMarketDataService(ctx context.Context, subscriberId string, targetAddress string, maxReconnectInterval time.Duration,
+	quoteBufferSize int) (QuoteStream, error) {
 
 	mdcFn := func(targetAddress string) (commonMds, GrpcConnection, error) {
 		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(maxReconnectInterval))
@@ -102,12 +99,12 @@ func NewQuoteStreamFromMdService(id string, targetAddress string, maxReconnectIn
 
 		client := api.NewMarketDataServiceClient(conn)
 		return &serviceToCommonMds{
-			subscriberId: id,
+			subscriberId: subscriberId,
 			client:       client,
 		}, conn, nil
 	}
 
-	return NewMdsQuoteStreamFromFn(id, targetAddress, make(chan *model.ClobQuote, quoteBufferSize), mdcFn)
+	return NewMdsQuoteStreamFromFn(ctx, subscriberId, targetAddress, quoteBufferSize, mdcFn)
 }
 
 type sourceToCommonMdsClient struct {
@@ -129,7 +126,7 @@ type sourceToCommonMds struct {
 	client marketdatasource.MarketDataSourceClient
 }
 
-func (s *sourceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOption) (commonMdsClient, error) {
+func (s *sourceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOption) (mdsClient, error) {
 	cc, err := s.client.Connect(ctx, opts...)
 	if err != nil {
 		return nil, err
@@ -140,8 +137,8 @@ func (s *sourceToCommonMds) Connect(ctx context.Context, opts ...grpc.CallOption
 	}, nil
 }
 
-func NewQuoteStreamFromMdSource(id string, targetAddress string, maxReconnectInterval time.Duration,
-	quoteBufferSize int) (*mdsQuoteStream, error) {
+func NewQuoteStreamFromMdSource(ctx context.Context, id string, targetAddress string, maxReconnectInterval time.Duration,
+	quoteBufferSize int) (QuoteStream, error) {
 
 	mdcFn := func(targetAddress string) (commonMds, GrpcConnection, error) {
 		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(maxReconnectInterval))
@@ -153,148 +150,131 @@ func NewQuoteStreamFromMdSource(id string, targetAddress string, maxReconnectInt
 		return &sourceToCommonMds{client}, conn, nil
 	}
 
-	return NewMdsQuoteStreamFromFn(id, targetAddress, make(chan *model.ClobQuote, quoteBufferSize), mdcFn)
+	return NewMdsQuoteStreamFromFn(ctx, id, targetAddress, quoteBufferSize, mdcFn)
 }
 
-func NewMdsQuoteStreamFromFn(id string, targetAddress string, out chan *model.ClobQuote,
-	getConnection GetMdsClientFn) (*mdsQuoteStream, error) {
+func NewMdsQuoteStreamFromFn(parentCtx context.Context, id string, targetAddress string, outBufferSize int,
+	getConnection GetMdsClientFn) (QuoteStream, error) {
 
+	maxReconnectWaitTime := time.Duration(bootstrap.GetOptionalIntEnvVar("MDSQUOTESTREAM_MAX_RECONNECT_WAIT_SECS", 30)) * time.Second
 
-	maxReconnectWaitSecs := bootstrap.GetOptionalIntEnvVar("MDSQUOTESTREAM_MAX_RECONNECT_WAIT_SECS", 30)
+	ctx, cancel := context.WithCancel(parentCtx)
+	out := make(chan *model.ClobQuote, outBufferSize)
 
-	n := &mdsQuoteStream{
-		subscriptionsChan: make(chan int32),
-		closeWriterChan:   make(chan bool),
-		out:               out,
-		log:               log.New(os.Stdout, "target:"+targetAddress+" ", log.Lshortfile|log.Ltime),
-		errLog:            log.New(os.Stderr, "target:"+targetAddress+" ", log.Lshortfile|log.Ltime),
+	log := slog.With("target", targetAddress)
+
+	mqs := &MdsQuoteStream{
+		out:           out,
+		subscriptions: map[int32]bool{},
+		cancelContext: cancel,
+		log:           log,
 	}
 
-	log.Println("connecting to market   data source at " + targetAddress)
+	log.Info("connecting to market data source", "targetAddress", targetAddress)
 
 	client, conn, err := getConnection(targetAddress)
 	if err != nil {
 		return nil, err
 	}
 
-	streamChan := make(chan commonMdsClient, 1)
-
 	go func() {
-		subscriptions := map[int32]bool{}
+		defer close(out)
 
-		var stream commonMdsClient
+		sentQuoteListingIds := map[int32]bool{}
 		for {
-
-			select {
-			case <-n.closeWriterChan:
-				log.Printf("closed writer")
-				break
-			case newStream := <-streamChan:
-				stream = newStream
-				if stream != nil {
-					log.Printf("new stream connected, resubscribing to all listings")
-					for listingId := range subscriptions {
-						err := stream.Subscribe(listingId)
-						if err != nil {
-							n.errLog.Printf("failed to resubscribe to all quotes using new stream: %v", err)
-							break
-						}
-					}
-
-					n.log.Printf("resubscribed to all %v quotes", len(subscriptions))
-
-				} else {
-					log.Printf("stream connection lost, sending empty quotes to all subscriptions")
-					for listingId, subscribed := range subscriptions {
-						if subscribed {
-							out <- &model.ClobQuote{
-								ListingId:         listingId,
-								Bids:              []*model.ClobLine{},
-								Offers:            []*model.ClobLine{},
-								StreamInterrupted: true,
-								StreamStatusMsg:   "market data source client stream interrupted",
-							}
-						}
-					}
-
-				}
-			case listingId := <-n.subscriptionsChan:
-				if !subscriptions[listingId] {
-					subscriptions[listingId] = true
-					if stream != nil {
-						err := stream.Subscribe(listingId)
-
-						if err != nil {
-							n.errLog.Printf("failed so subscribe to listing %v, error:%v", listingId, err)
-						} else {
-							outboundSubscriptions.Inc()
-						}
-
-					}
-				}
-
-			}
-		}
-
-	}()
-
-	go func() {
-
-		for {
-
 			state := conn.GetState()
-			var retryWait int = 1
+			retryWait := time.Duration(1) * time.Second
 			for state != connectivity.Ready {
-				n.log.Printf("waiting %v seconds before checking market data source connection state", retryWait)
-				time.Sleep(time.Duration(retryWait) * time.Second)
+				log.Info(fmt.Sprintf("waiting %v before checking market data source connection state", retryWait))
+
+				select {
+				case <-ctx.Done():
+				case <-time.After(retryWait):
+				}
+
 				retryWait = retryWait * 2
 
-				if retryWait > maxReconnectWaitSecs {
-					retryWait = maxReconnectWaitSecs
+				if retryWait > maxReconnectWaitTime {
+					retryWait = maxReconnectWaitTime
 				}
 
-				conn.WaitForStateChange(context.Background(), state)
+				conn.WaitForStateChange(ctx, state)
 
 				state = conn.GetState()
-				n.log.Println("market data source connection state is:", state)
+				log.Info("market data source connection state", "state", state)
 			}
 
-			stream, err := client.Connect(metadata.AppendToOutgoingContext(context.Background(), "subscriber_id", id))
+			mdsClient, err := client.Connect(metadata.AppendToOutgoingContext(ctx, "subscriber_id", id))
 			if err != nil {
-				n.errLog.Println("failed to connect to quote stream:", err)
+				mqs.log.Error("failed to connect to quote stream", "error", err)
 				continue
 			}
 
-			n.log.Println("connected to quote stream")
+			log.Info("connected to quote stream, resubscribing to all listings")
 
-			streamChan <- stream
+			mqs.setMdsClient(mdsClient)
 
 			for {
-				incRefresh, err := stream.Recv()
+				clobQuote, err := mdsClient.Recv()
 				if err != nil {
-					n.errLog.Println("inbound stream error:", err)
+					log.Error("inbound stream error", "error", err)
 					break
 				}
-				out <- incRefresh
+				out <- clobQuote
+				sentQuoteListingIds[clobQuote.ListingId] = true
 				quotesReceived.Inc()
 			}
 
-			streamChan <- nil
+			log.Info("inbound stream closed, resetting all quotes")
+			for listingId := range sentQuoteListingIds {
+				out <- &model.ClobQuote{
+					ListingId:         listingId,
+					Bids:              []*model.ClobLine{},
+					Offers:            []*model.ClobLine{},
+					StreamInterrupted: true,
+					StreamStatusMsg:   "market data source client stream interrupted",
+				}
+			}
+			sentQuoteListingIds = map[int32]bool{}
 
 		}
 	}()
 
-	return n, nil
+	return mqs, nil
 }
 
-func (mgc *mdsQuoteStream) GetStream() <-chan *model.ClobQuote {
-	return mgc.out
+func (m *MdsQuoteStream) setMdsClient(mdsClient mdsClient) {
+	m.subscriptionLock.Lock()
+	defer m.subscriptionLock.Unlock()
+	m.client = mdsClient
+	for listingId := range m.subscriptions {
+		err := mdsClient.Subscribe(listingId)
+		if err != nil {
+			m.log.Error("failed to subscribe to quote for listing", "listingId", listingId, "error", err)
+			break
+		}
+	}
 }
 
-func (mgc *mdsQuoteStream) Subscribe(listingId int32) {
-	mgc.subscriptionsChan <- listingId
+func (m *MdsQuoteStream) Chan() <-chan *model.ClobQuote {
+	return m.out
 }
 
-func (mgc *mdsQuoteStream) Close() {
-	mgc.closeWriterChan <- true
+func (m *MdsQuoteStream) Subscribe(listingId int32) error {
+	m.subscriptionLock.Lock()
+	defer m.subscriptionLock.Unlock()
+	m.subscriptions[listingId] = true
+	if m.client != nil {
+		err := m.client.Subscribe(listingId)
+		if err != nil {
+			return fmt.Errorf("failed to subscribe to quote for listing %v: %w", listingId, err)
+
+		}
+	}
+
+	return nil
+}
+
+func (m *MdsQuoteStream) Close() {
+	m.cancelContext()
 }

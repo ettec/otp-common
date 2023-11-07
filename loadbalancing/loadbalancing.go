@@ -1,4 +1,4 @@
-// Common utility functions used in load balancing.
+// Package loadbalancing contains utility functions used in load balancing.
 package loadbalancing
 
 import (
@@ -17,10 +17,10 @@ type BalancingStatefulPod struct {
 	TargetAddress string
 	Ordinal       int
 	Name          string
-	Mic string
+	Mic           string
 }
 
-func GetBalancingStatefulPod(pod v12.Pod) ( *BalancingStatefulPod,  error) {
+func GetBalancingStatefulPod(pod v12.Pod) (*BalancingStatefulPod, error) {
 	const micLabel = "mic"
 	if _, ok := pod.Labels[micLabel]; !ok {
 		return nil, fmt.Errorf("ignoring stateful pod as it does not have a mic label, pod: %v", pod)
@@ -30,7 +30,7 @@ func GetBalancingStatefulPod(pod v12.Pod) ( *BalancingStatefulPod,  error) {
 
 	targetAddress, err := getStatefulSetMemberAddress(pod)
 	if err != nil {
-		return  nil, fmt.Errorf("failed to get stateful pod address:%v", err)
+		return nil, fmt.Errorf("failed to get stateful pod address:%v", err)
 	}
 
 	ordinal, err := getStatefulSetPodOrdinal(pod)

@@ -1,13 +1,14 @@
-// Code to interact with the apis of standard otp service interfaces
+// Package api contains Code to interact with the apis of standard otp service interfaces
 package api
 
 import (
+	"errors"
 	"fmt"
 	"github.com/ettec/otp-common/api/executionvenue"
 	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 )
@@ -19,7 +20,7 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 	})
 
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to list order router services: %w", err)
 	}
 
 	var client executionvenue.ExecutionVenueClient
@@ -34,18 +35,18 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 		}
 
 		if podPort == 0 {
-			log.Printf("ignoring order router service as it does not have a port named executionvenue, service: %v", service)
+			slog.Info("ignoring order router service as it does not have an api port", "order-router-service", service)
 			continue
 		}
 
 		targetAddress := service.Name + ":" + strconv.Itoa(int(podPort))
 
-		log.Printf("connecting to order router service %v at: %v", service.Name, targetAddress)
+		slog.Info("connecting to order router service", "name", service.Name, "address", targetAddress)
 
 		conn, err := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBackoffMaxDelay(maxConnectRetrySecs))
 
 		if err != nil {
-			panic(err)
+			return nil, fmt.Errorf("failed to dial order router service %v at %v: %w", service.Name, targetAddress, err)
 		}
 
 		client = executionvenue.NewExecutionVenueClient(conn)
@@ -53,7 +54,7 @@ func GetOrderRouter(clientSet *kubernetes.Clientset, maxConnectRetrySecs time.Du
 	}
 
 	if client == nil {
-		return nil, fmt.Errorf("failed to find order router")
+		return nil, errors.New("failed to find order router")
 	}
 
 	return client, nil

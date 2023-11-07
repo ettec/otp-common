@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"github.com/ettec/otp-common/api/marketdatasource"
 	"github.com/ettec/otp-common/bootstrap"
-	"github.com/ettec/otp-common/model"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc/metadata"
-	"log"
+	"log/slog"
 )
 
 var connections = promauto.NewGauge(prometheus.GaugeOpts{
@@ -23,62 +22,68 @@ var quotesSent = promauto.NewCounter(prometheus.CounterOpts{
 })
 
 type marketDataSourceServer struct {
-	quoteDistributor QuoteDistributor
+	quoteDistributor quoteDistributor
 	maxSubscriptions int
 }
 
-func NewMarketDataSource(quoteDistributor QuoteDistributor) marketdatasource.MarketDataSourceServer {
+type quoteDistributor interface {
+	NewQuoteStream() *DistributorQuoteStream
+}
+
+func NewMarketDataSource(quoteDistributor quoteDistributor) marketdatasource.MarketDataSourceServer {
 
 	maxSubscriptions := bootstrap.GetOptionalIntEnvVar("MARKETDATASOURCE_MAX_SUBSCRIPTIONS", 10000)
 
-	return &marketDataSourceServer{quoteDistributor, maxSubscriptions }
+	return &marketDataSourceServer{quoteDistributor, maxSubscriptions}
 }
-
-
 
 const SubscriberIdKey = "subscriber_id"
 
 func (s *marketDataSourceServer) Connect(stream marketdatasource.MarketDataSource_ConnectServer) error {
 
-	ctx, ok := metadata.FromIncomingContext(stream.Context())
+	metaData, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok {
-		return fmt.Errorf("failed to retrieve call context")
+		return fmt.Errorf("failed to get metadata from incoming context")
 	}
 
-	values := ctx.Get(SubscriberIdKey)
+	values := metaData.Get(SubscriberIdKey)
 	if len(values) != 1 {
-		return fmt.Errorf("must specify string value for %v", SubscriberIdKey)
+		return fmt.Errorf("meta data does not contain an entry for required subscriber id key %v", SubscriberIdKey)
 	}
+
+	log := slog.Default().With("subscriberId", values[0])
 
 	fromClientId := values[0]
 	subscriberId := fromClientId + ":" + uuid.New().String()
 
-	log.Printf("connect request received for subscriber %v, unique connection id: %v ", fromClientId, subscriberId)
+	log.Info("connect request received", "subscriber", fromClientId, "uniqueConnectionId", subscriberId)
 
-	out := make(chan *model.ClobQuote)
-
-	cc := NewConflatedQuoteConnection(subscriberId, s.quoteDistributor.GetNewQuoteStream(), out, s.maxSubscriptions)
-	defer cc.Close()
+	quoteStream := NewConflatedQuoteStream(subscriberId, s.quoteDistributor.NewQuoteStream(),
+		s.maxSubscriptions)
+	defer quoteStream.Close()
 
 	go func() {
 		for {
 			subscription, err := stream.Recv()
-
 			if err != nil {
-				log.Printf("subscriber:%v inbound stream error:%v ", subscriberId, err)
+				log.Error("error receiving from grpc stream", "error", err)
 				break
 			} else {
-				log.Printf("subscribe request, subscriber id:%v, listing id:%v", subscriberId, subscription.ListingId)
-				cc.Subscribe(subscription.ListingId)
+				log.Info("subscribing to listing id", "subscriberId", subscriberId,
+					"listingId", subscription.ListingId)
+				err := quoteStream.Subscribe(subscription.ListingId)
+				if err != nil {
+					log.Error("error subscribing to listing", "listingId", subscription.ListingId, "error", err)
+				}
 			}
 		}
 	}()
 
 	connections.Inc()
 
-	for mdUpdate := range out {
-		if err := stream.Send(mdUpdate); err != nil {
-			log.Printf("error on connection for subscriber %v, closing connection, error:%v ", subscriberId, err)
+	for quote := range quoteStream.Chan() {
+		if err := stream.Send(quote); err != nil {
+			log.Error("failed to send quote, closing connection", "subscriberId", subscriberId, "error", err)
 			break
 		}
 

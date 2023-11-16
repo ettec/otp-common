@@ -1,69 +1,62 @@
-// Contains types to assist in building services that handle market data.
+// Package marketdata contains code to assist in building services that handle market data.
 package marketdata
 
 import (
 	"fmt"
 	"github.com/ettec/otp-common/model"
-	"log"
-	"os"
+	"log/slog"
 )
 
-type ConflatedQuoteConnection interface {
-	GetId() string
-	Subscribe(listingId int32) error
-	Close()
+type ConflatedQuoteStream struct {
+	id                 string
+	maxSubscriptions   int
+	quotesIn           QuoteStream
+	conflatedQuoteChan <-chan *model.ClobQuote
+	subscriptions      map[int32]bool
+	log                *slog.Logger
 }
 
-type conflatedQuoteConnection struct {
-	id               string
-	maxSubscriptions int
-	stream           Stream
-	subscriptions    map[int32]bool
-	log              *log.Logger
-	errLog           *log.Logger
-}
+func NewConflatedQuoteStream(id string, stream QuoteStream,
+	maxSubscriptions int) *ConflatedQuoteStream {
 
-func (c *conflatedQuoteConnection) Close() {
-	c.stream.Close()
-}
+	conflatedQuoteChan := conflateQuoteChan(stream.Chan(), maxSubscriptions)
+	logger := slog.Default().With("conflatedQuoteConnectionId", id)
 
-func (c *conflatedQuoteConnection) Subscribe(listingId int32) error {
-
-	if len(c.subscriptions) == c.maxSubscriptions {
-		return fmt.Errorf("max number of subscriptions for this connection has been reached: %v", c.maxSubscriptions)
+	c := &ConflatedQuoteStream{id: id,
+		maxSubscriptions:   maxSubscriptions,
+		subscriptions:      map[int32]bool{},
+		quotesIn:           stream,
+		conflatedQuoteChan: conflatedQuoteChan,
+		log:                logger,
 	}
-
-	if c.subscriptions[listingId] {
-		return fmt.Errorf("already subscribed to listing id: %v", listingId)
-	}
-
-	c.stream.Subscribe(listingId)
-	c.log.Println("subscribed to listing id:", listingId)
-
-	return nil
-}
-
-func (c *conflatedQuoteConnection) GetId() string {
-	return c.id
-}
-
-//
-func NewConflatedQuoteConnection(id string, stream MdsQuoteStream, out chan<- *model.ClobQuote,
-	maxSubscriptions int) *conflatedQuoteConnection {
-
-	conflatedStream := NewConflatedQuoteStream(stream, out, maxSubscriptions)
-
-	c := &conflatedQuoteConnection{id: id,
-		maxSubscriptions: maxSubscriptions,
-		subscriptions:    map[int32]bool{},
-		stream:           conflatedStream,
-		log:              log.New(os.Stdout, "conflatedQuoteConnection:"+id, log.LstdFlags),
-		errLog:           log.New(os.Stderr, "conflatedQuoteConnection:"+id, log.LstdFlags)}
 
 	return c
 }
 
-type Stream interface {
-	Subscribe(listingId int32)
-	Close()
+func (c *ConflatedQuoteStream) Subscribe(listingId int32) error {
+
+	if len(c.subscriptions) == c.maxSubscriptions {
+		return fmt.Errorf("max number of subscriptions, %v, for this connection has been reached", c.maxSubscriptions)
+	}
+
+	if c.subscriptions[listingId] {
+		return nil
+	}
+
+	err := c.quotesIn.Subscribe(listingId)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to listing %v: %w", listingId, err)
+	}
+
+	c.log.Info("Subscribed to listing", "listingId", listingId)
+
+	return nil
+}
+
+func (c *ConflatedQuoteStream) Chan() <-chan *model.ClobQuote {
+	return c.conflatedQuoteChan
+}
+
+func (c *ConflatedQuoteStream) Close() {
+	c.quotesIn.Close()
 }

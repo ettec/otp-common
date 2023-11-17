@@ -86,8 +86,7 @@ type MdsQuoteStream struct {
 	log              *slog.Logger
 }
 
-// NewQuoteStreamFromMarketDataService provides a channel of quotes and a method to subscribe to quotes.  This method return a quote
-// stream that sources quote data from a market data service.
+// NewQuoteStreamFromMarketDataService returns a quote stream that sources quote data from a market data service.
 func NewQuoteStreamFromMarketDataService(ctx context.Context, subscriberId string, targetAddress string, maxReconnectInterval time.Duration,
 	quoteBufferSize int) (QuoteStream, error) {
 

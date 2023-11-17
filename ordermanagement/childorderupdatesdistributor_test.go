@@ -1,18 +1,19 @@
 package ordermanagement
 
 import (
+	"context"
 	"github.com/ettec/otp-common/model"
 	"testing"
 )
 
-func Test_childOrderUpdatesDistributor(t *testing.T) {
+func TestChildOrderUpdatesDistribution(t *testing.T) {
 
 	updates := make(chan ChildOrder, 100)
 
-	d := NewChildOrderUpdatesDistributor(updates)
+	d := NewChildOrderUpdatesDistributor(updates, 1000)
 
-	astream := d.NewOrderStream("a", 200)
-	bstream := d.NewOrderStream("b", 200)
+	aStream := d.GetChildOrderStream("a", 200)
+	bStream := d.GetChildOrderStream("b", 200)
 
 	updates <- ChildOrder{
 		ParentOrderId: "a",
@@ -24,19 +25,19 @@ func Test_childOrderUpdatesDistributor(t *testing.T) {
 		Child:         &model.Order{Id: "b1"},
 	}
 
-	d.Start()
+	d.Start(context.Background())
 
-	u := <-astream.GetStream()
+	u := <-aStream.Chan()
 	if u.Id != "a1" {
 		t.FailNow()
 	}
 
-	u = <-bstream.GetStream()
+	u = <-bStream.Chan()
 	if u.Id != "b1" {
 		t.FailNow()
 	}
 
-	cstream := d.NewOrderStream("c", 200)
+	cStream := d.GetChildOrderStream("c", 200)
 
 	updates <- ChildOrder{
 		ParentOrderId: "a",
@@ -48,26 +49,26 @@ func Test_childOrderUpdatesDistributor(t *testing.T) {
 		Child:         &model.Order{Id: "c1"},
 	}
 
-	u = <-astream.GetStream()
+	u = <-aStream.Chan()
 	if u.Id != "a1" {
 		t.FailNow()
 	}
 
-	u = <-cstream.GetStream()
+	u = <-cStream.Chan()
 	if u.Id != "c1" {
 		t.FailNow()
 	}
 
 }
 
-func Test_closingChildOrderStream(t *testing.T) {
+func TestClosingChildOrderStream(t *testing.T) {
 
 	updates := make(chan ChildOrder, 100)
 
-	d := NewChildOrderUpdatesDistributor(updates)
+	d := NewChildOrderUpdatesDistributor(updates, 1000)
 
-	astream := d.NewOrderStream("a", 200)
-	bstream := d.NewOrderStream("b", 200)
+	aStream := d.GetChildOrderStream("a", 200)
+	bStream := d.GetChildOrderStream("b", 200)
 
 	updates <- ChildOrder{
 		ParentOrderId: "a",
@@ -79,19 +80,19 @@ func Test_closingChildOrderStream(t *testing.T) {
 		Child:         &model.Order{Id: "b1"},
 	}
 
-	d.Start()
+	d.Start(context.Background())
 
-	u := <-astream.GetStream()
+	u := <-aStream.Chan()
 	if u.Id != "a1" {
 		t.FailNow()
 	}
 
-	u = <-bstream.GetStream()
+	u = <-bStream.Chan()
 	if u.Id != "b1" {
 		t.FailNow()
 	}
 
-	astream.Close()
+	aStream.Close()
 
 	updates <- ChildOrder{
 		ParentOrderId: "a",
@@ -103,26 +104,26 @@ func Test_closingChildOrderStream(t *testing.T) {
 		Child:         &model.Order{Id: "b1"},
 	}
 
-	_, ok := <-astream.GetStream()
+	_, ok := <-aStream.Chan()
 	if ok {
 		t.FailNow()
 	}
 
-	u = <-bstream.GetStream()
+	u = <-bStream.Chan()
 	if u.Id != "b1" {
 		t.FailNow()
 	}
 
 }
 
-func Test_blockedStreamDoesNotStopOtherStreamEvents(t *testing.T) {
+func TestBlockedStreamDoesNotStopOtherStreamEvents(t *testing.T) {
 
 	updates := make(chan ChildOrder, 100)
 
-	d := NewChildOrderUpdatesDistributor(updates)
+	d := NewChildOrderUpdatesDistributor(updates, 1000)
 
-	d.NewOrderStream("a", 1)
-	bstream := d.NewOrderStream("b", 1)
+	d.GetChildOrderStream("a", 1)
+	bStream := d.GetChildOrderStream("b", 1)
 
 	updates <- ChildOrder{
 		ParentOrderId: "a",
@@ -134,9 +135,9 @@ func Test_blockedStreamDoesNotStopOtherStreamEvents(t *testing.T) {
 		Child:         &model.Order{Id: "b1"},
 	}
 
-	d.Start()
+	d.Start(context.Background())
 
-	u := <-bstream.GetStream()
+	u := <-bStream.Chan()
 	if u.Id != "b1" {
 		t.FailNow()
 	}
@@ -151,9 +152,8 @@ func Test_blockedStreamDoesNotStopOtherStreamEvents(t *testing.T) {
 		Child:         &model.Order{Id: "b1"},
 	}
 
-	u = <-bstream.GetStream()
+	u = <-bStream.Chan()
 	if u.Id != "b1" {
 		t.FailNow()
 	}
-
 }

@@ -131,7 +131,7 @@ func NewOrder(id string, OrderSide Side, Quantity *Decimal64, Price *Decimal64, 
 		OriginatorRef:     originatorRef,
 		RootOriginatorId:  rootOriginatorId,
 		RootOriginatorRef: rootOriginatorRef,
-		Destination: destination,
+		Destination:       destination,
 	}
 
 }
@@ -147,7 +147,7 @@ func (o *Order) AddExecution(execution Execution) error {
 	if o.TargetStatus == OrderStatus_LIVE {
 		err := o.SetStatus(OrderStatus_LIVE)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to set order status to live:%w", err)
 		}
 	}
 
@@ -163,7 +163,7 @@ func (o *Order) AddExecution(execution Execution) error {
 	if o.RemainingQuantity.AsDecimal().LessThanOrEqual(zero) {
 		err := o.SetStatus(OrderStatus_FILLED)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to set order status to filled:%w", err)
 		}
 	}
 

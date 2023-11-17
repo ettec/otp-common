@@ -2,6 +2,7 @@ package ordermanagement
 
 import (
 	"github.com/ettec/otp-common/model"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -12,14 +13,17 @@ func IasD(i int) *model.Decimal64 {
 	}
 }
 
-func Test_parentOrder_cancelled(t *testing.T) {
+func TestParentOrderCancel(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi",
 		"or", "ri", "rr", "XNAS"))
-	po.SetTargetStatus(model.OrderStatus_LIVE)
-	po.SetStatus(model.OrderStatus_LIVE)
+	err := po.SetTargetStatus(model.OrderStatus_LIVE)
+	assert.NoError(t, err)
+	err = po.SetStatus(model.OrderStatus_LIVE)
+	assert.NoError(t, err)
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	assert.NoError(t, err)
 
 	if !po.ExposedQuantity.Equal(IasD(15)) {
 		t.FailNow()
@@ -29,48 +33,56 @@ func Test_parentOrder_cancelled(t *testing.T) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 2, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 2, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	assert.NoError(t, err)
 
 	if !po.ExposedQuantity.Equal(IasD(15)) || !po.GetAvailableQty().Equal(IasD(5)) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(20)) || !po.GetAvailableQty().Equal(IasD(0)) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 2, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 2, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(20)) || !po.GetAvailableQty().Equal(IasD(0)) {
 		t.FailNow()
 	}
 
-	po.SetTargetStatus(model.OrderStatus_CANCELLED)
+	err = po.SetTargetStatus(model.OrderStatus_CANCELLED)
+	assert.NoError(t, err)
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, TargetStatus: model.OrderStatus_CANCELLED, Status: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, TargetStatus: model.OrderStatus_CANCELLED, Status: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(20)) ||
 		!po.GetAvailableQty().Equal(IasD(0)) || po.GetStatus() != model.OrderStatus_LIVE {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 3, TargetStatus: model.OrderStatus_CANCELLED, Status: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 3, TargetStatus: model.OrderStatus_CANCELLED, Status: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(20)) ||
 		!po.GetAvailableQty().Equal(IasD(0)) || po.GetStatus() != model.OrderStatus_LIVE {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 4, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_CANCELLED, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 4, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_CANCELLED, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(5)) ||
 		!po.GetAvailableQty().Equal(IasD(15)) || po.GetStatus() != model.OrderStatus_LIVE {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 4, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_CANCELLED, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 4, TargetStatus: model.OrderStatus_NONE, Status: model.OrderStatus_CANCELLED, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(0)) || !po.ExposedQuantity.Equal(IasD(0)) ||
 		!po.GetAvailableQty().Equal(IasD(20)) || po.GetStatus() != model.OrderStatus_CANCELLED {
@@ -79,13 +91,15 @@ func Test_parentOrder_cancelled(t *testing.T) {
 
 }
 
-func Test_parentOrder_childOrdersFilled(t *testing.T) {
+func TestParentOrderUpdatesWhenChildOrdersFilled(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi", "or", "ri",
 		"rr", "XNAS"))
-	po.SetStatus(model.OrderStatus_LIVE)
+	err := po.SetTargetStatus(model.OrderStatus_LIVE)
+	assert.NoError(t, err)
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)})
+	assert.NoError(t, err)
 
 	if !po.ExposedQuantity.Equal(IasD(15)) {
 		t.FailNow()
@@ -95,7 +109,8 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(5)})
+	assert.NoError(t, err)
 
 	if !po.ExposedQuantity.Equal(IasD(20)) {
 		t.FailNow()
@@ -105,8 +120,9 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 2, LastExecPrice: IasD(50), LastExecQuantity: IasD(5),
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 2, LastExecPrice: IasD(50), LastExecQuantity: IasD(5),
 		LastExecId: "a1e1", RemainingQuantity: IasD(10)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(5)) {
 		t.FailNow()
@@ -116,9 +132,10 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 2, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(0),
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a2", Version: 2, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(5), RemainingQuantity: IasD(0),
 		LastExecPrice: IasD(50), LastExecQuantity: IasD(5),
 		LastExecId: "a2e1"})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(10)) {
 		t.FailNow()
@@ -132,8 +149,9 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 		t.FailNow()
 	}
 
-	po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, LastExecPrice: IasD(50), LastExecQuantity: IasD(10),
+	err = po.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, LastExecPrice: IasD(50), LastExecQuantity: IasD(10),
 		LastExecId: "a1e2", RemainingQuantity: IasD(0)})
+	assert.NoError(t, err)
 
 	if !po.TradedQuantity.Equal(IasD(20)) {
 		t.FailNow()
@@ -153,11 +171,10 @@ func Test_parentOrder_childOrdersFilled(t *testing.T) {
 
 }
 
-func Test_parentOrder_recovery(t *testing.T) {
+func TestParentOrderRecovery(t *testing.T) {
 
 	po := NewParentOrder(*model.NewOrder("a", model.Side_BUY, IasD(20), IasD(50), 1, "oi", "or", "ri",
 		"rr", "XNAS"))
-	po.SetStatus(model.OrderStatus_LIVE)
 
 	preFailureUpdates := []*model.Order{
 		{Id: "a1", Version: 1, TargetStatus: model.OrderStatus_LIVE, Quantity: IasD(15), RemainingQuantity: IasD(15)},
@@ -170,7 +187,8 @@ func Test_parentOrder_recovery(t *testing.T) {
 	}
 
 	for _, update := range preFailureUpdates {
-		po.OnChildOrderUpdate(update)
+		err := po.OnChildOrderUpdate(update)
+		assert.NoError(t, err)
 	}
 
 	if !po.TradedQuantity.Equal(IasD(10)) {
@@ -204,13 +222,14 @@ func Test_parentOrder_recovery(t *testing.T) {
 
 	numUpdates := len(preFailureUpdates)
 	for idx, update := range preFailureUpdates {
-		childOrdersRecovered, _ := recoveredOrder.OnChildOrderUpdate(update)
+		err := recoveredOrder.OnChildOrderUpdate(update)
+		assert.NoError(t, err)
 		if idx < numUpdates-1 {
-			if childOrdersRecovered {
+			if recoveredOrder.childOrdersRecovered {
 				t.FailNow()
 			}
 		} else {
-			if !childOrdersRecovered {
+			if !recoveredOrder.childOrdersRecovered {
 				t.FailNow()
 			}
 		}
@@ -233,8 +252,9 @@ func Test_parentOrder_recovery(t *testing.T) {
 		t.FailNow()
 	}
 
-	recoveredOrder.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, LastExecPrice: IasD(50), LastExecQuantity: IasD(10),
+	err := recoveredOrder.OnChildOrderUpdate(&model.Order{Id: "a1", Version: 3, LastExecPrice: IasD(50), LastExecQuantity: IasD(10),
 		LastExecId: "a1e2", RemainingQuantity: IasD(0)})
+	assert.NoError(t, err)
 
 	if !recoveredOrder.TradedQuantity.Equal(IasD(20)) {
 		t.FailNow()

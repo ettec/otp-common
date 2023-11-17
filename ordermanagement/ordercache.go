@@ -2,90 +2,89 @@ package ordermanagement
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/ettec/otp-common/model"
-	"github.com/ettec/otp-common/orderstore"
 	"github.com/golang/protobuf/proto"
 )
 
+// OrderCache is an in memory cache of the latest order state for a given owner backed by a persistent store.
 type OrderCache struct {
-	store orderstore.OrderStore
+	store orderStore
 	cache map[string]*model.Order
 }
 
-// In memory cache of the latest order state backed by a store.
-func NewOrderCache(store orderstore.OrderStore, ownerId string) (*OrderCache, error) {
+type orderStore interface {
+	Write(ctx context.Context, order *model.Order) error
+	LoadOrders(ctx context.Context, where func(order *model.Order) bool) (map[string]*model.Order, error)
+	Close()
+}
+
+func NewOwnerOrderCache(ctx context.Context, ownerId string, store orderStore) (*OrderCache, error) {
 	orderCache := OrderCache{
 		store: store,
 	}
 
 	var err error
-	orderCache.cache, err = store.RecoverInitialCache(func(o * model.Order) bool {
+	orderCache.cache, err = store.LoadOrders(ctx, func(o *model.Order) bool {
 		return o.OwnerId == ownerId
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load orders: %w", err)
 	}
 
 	return &orderCache, nil
 }
 
-func (oc *OrderCache) Store(order *model.Order) error {
+func (oc *OrderCache) Store(ctx context.Context, order *model.Order) error {
 
 	orderAsBytes, err := proto.Marshal(order)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal order: %w", err)
 	}
+
 	orderCopy := &model.Order{}
-	err = proto.Unmarshal(orderAsBytes, orderCopy)
-	if err != nil {
-		return err
+	if err = proto.Unmarshal(orderAsBytes, orderCopy); err != nil {
+		return fmt.Errorf("failed to unmarshal order: %w", err)
 	}
-	order = orderCopy
 
-
-	existingOrder, exists := oc.cache[order.Id]
+	existingOrder, exists := oc.cache[orderCopy.Id]
 	if exists {
-
-		orderAsBytes, err := proto.Marshal(order)
-		if err != nil {
-			return fmt.Errorf("failed to compare order: %w", err)
-		}
-
 		existingOrderAsBytes, err := proto.Marshal(existingOrder)
 		if err != nil {
-			return fmt.Errorf("failed to compare order: %w", err)
+			return fmt.Errorf("failed to marshal existing order: %w", err)
 		}
 
-		if bytes.Equal(existingOrderAsBytes, orderAsBytes)  {
+		if bytes.Equal(existingOrderAsBytes, orderAsBytes) {
 			// no change, so do not store the order
 			return nil
 		}
 
-		order.Version = existingOrder.Version + 1
+		orderCopy.Version = existingOrder.Version + 1
 	}
 
-	e := oc.store.Write(order)
-	if e != nil {
-		return e
+	if err := oc.store.Write(ctx, orderCopy); err != nil {
+		return fmt.Errorf("failed to write order to store: %w", err)
 	}
 
-	oc.cache[order.Id] = order
+	oc.cache[orderCopy.Id] = orderCopy
 
 	return nil
 }
 
-// Returns the order and true if found, otherwise a nil value and false
+// GetOrder returns the order and true if found, otherwise a nil value and false
 func (oc *OrderCache) GetOrder(orderId string) (*model.Order, bool, error) {
-	order, ok := oc.cache[orderId]
+	order, exists := oc.cache[orderId]
 
-	if ok {
+	if exists {
 		orderAsBytes, err := proto.Marshal(order)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to unmarshal order:%w", err)
 		}
 		orderCopy := &model.Order{}
-		err = proto.Unmarshal(orderAsBytes, orderCopy)
+		if err = proto.Unmarshal(orderAsBytes, orderCopy); err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal order:%w", err)
+		}
 
 		return orderCopy, true, nil
 	} else {

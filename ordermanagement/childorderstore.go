@@ -6,8 +6,7 @@ import (
 	"github.com/ettec/otp-common/model"
 	"github.com/golang/protobuf/proto"
 	"github.com/segmentio/kafka-go"
-	logger "log"
-	"os"
+	"log/slog"
 )
 
 type ChildOrder struct {
@@ -20,95 +19,53 @@ type orderReader interface {
 	ReadMessage(ctx context.Context) (kafka.Message, error)
 }
 
-var errLog = logger.New(os.Stderr, logger.Prefix(), logger.Flags())
-
-// Returns a channel of orders whose originator id matches the given order id and are thus children of the order.
-func GetChildOrders(id string, kafkaReaderConfig kafka.ReaderConfig, bufferSize int) (<-chan ChildOrder, error) {
-
-	reader := kafka.NewReader(kafkaReaderConfig)
-
-	isChildOrder := func(order *model.Order) bool {
-		return id == order.GetOriginatorId()
-	}
-
-	getParentOrderId := func(order *model.Order) string {
-		return order.OriginatorRef
-	}
-
-	updates := make(chan ChildOrder, bufferSize)
-
-	go func() {
-		defer reader.Close()
-
-		for {
-
-			msg, err := reader.ReadMessage(context.Background())
-
-			if err != nil {
-				errLog.Printf("exiting read loop as error occurred whilst streaming Child orders:%v", err)
-				break
-			}
-
-			order := &model.Order{}
-			err = proto.Unmarshal(msg.Value, order)
-			if err != nil {
-				errLog.Printf("exiting read loop, failed to unmarshal order:%v", err)
-				break
-			}
-
-			if isChildOrder(order) {
-				updates <- ChildOrder{
-					ParentOrderId: getParentOrderId(order),
-					Child:         order,
-				}
-			}
-
-		}
-
-	}()
-
-	return updates, nil
+// GetChildOrders returns a channel of orders whose originator id matches the given order id and are thus children of the order.
+func GetChildOrders(ctx context.Context, id string, kafkaReaderConfig kafka.ReaderConfig, bufferSize int) (<-chan ChildOrder, error) {
+	return getChildOrdersFromReader(ctx, id, kafka.NewReader(kafkaReaderConfig), bufferSize)
 }
 
-func getChildOrdersFromReader(id string, reader orderReader) (<-chan ChildOrder, error) {
+func getChildOrdersFromReader(ctx context.Context, parentOriginatorId string, reader orderReader, bufferSize int) (<-chan ChildOrder, error) {
 	isChildOrder := func(order *model.Order) bool {
-		return id == order.GetOriginatorId()
+		return parentOriginatorId == order.GetOriginatorId()
 	}
 
 	getParentOrderId := func(order *model.Order) string {
 		return order.OriginatorRef
 	}
 
-	updates := make(chan ChildOrder, 1000)
+	out := make(chan ChildOrder, bufferSize)
 
 	go func() {
-		defer reader.Close()
+		defer func() {
+			close(out)
+			if err := reader.Close(); err != nil {
+				slog.Error("failed to close kafka reader", "error", err)
+			}
+		}()
 
 		for {
 
-			msg, err := reader.ReadMessage(context.Background())
-
+			msg, err := reader.ReadMessage(ctx)
 			if err != nil {
-				errLog.Printf("exiting read loop as error occurred whilst streaming Child orders:%v", err)
-				break
+				slog.Error("failed to read child orders from kafka store", "error", err)
+				return
 			}
 
 			order := &model.Order{}
 			err = proto.Unmarshal(msg.Value, order)
 			if err != nil {
-				errLog.Printf("exiting read loop, failed to unmarshal order:%v", err)
-				break
+				slog.Error("failed to unmarshal order", "error", err)
+				return
 			}
 
 			if isChildOrder(order) {
-				updates <- ChildOrder{
+				out <- ChildOrder{
 					ParentOrderId: getParentOrderId(order),
 					Child:         order,
 				}
 			}
-
 		}
-
 	}()
-	return updates, nil
+
+	return out, nil
 }

@@ -12,9 +12,11 @@ import (
 )
 
 func Test_ParentOrderUpdatesOnlySentWhenParentOrderChanged(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	parentOrderUpdatesChan, _, _, _, _, _, _, _ := setupStrategy(
-		func(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {
+	parentOrderUpdatesChan, _, _, _, _, _, _, _ := setupStrategy(ctx,
+		func(ctx context.Context, om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {
 
 			go func() {
 				if om.ParentOrder.GetTargetStatus() == model.OrderStatus_LIVE {
@@ -22,7 +24,7 @@ func Test_ParentOrderUpdatesOnlySentWhenParentOrderChanged(t *testing.T) {
 				}
 
 				for i := 0; i < 6; i++ {
-					om.CheckIfDone()
+					om.CheckIfDone(ctx)
 				}
 			}()
 		})
@@ -44,13 +46,17 @@ func Test_ParentOrderUpdatesOnlySentWhenParentOrderChanged(t *testing.T) {
 }
 
 func Test_SendingChildOrders(t *testing.T) {
-	setupStrategyAndSendTwoChildOrders(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	setupStrategyAndSendTwoChildOrders(ctx, t)
 }
 
 func Test_StrategyCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	parentOrderUpdatesChan, _, cancelOrderOutboundParams, childOrdersIn, _,
-	listing, om, doneChan, child1Id, child2Id := setupStrategyAndSendTwoChildOrders(t)
+		listing, om, doneChan, child1Id, child2Id := setupStrategyAndSendTwoChildOrders(ctx, t)
 
 	om.CancelChan <- ""
 
@@ -109,7 +115,10 @@ func Test_StrategyCancel(t *testing.T) {
 }
 
 func Test_cancelOfUnexposedOrder(t *testing.T) {
-	parentOrderUpdatesChan, _, _, _, _, _, om, _ := setupStrategy(ExecuteAsDmaStrategy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	parentOrderUpdatesChan, _, _, _, _, _, om, _ := setupStrategy(ctx, ExecuteAsDmaStrategy)
 
 	order := <-parentOrderUpdatesChan
 
@@ -136,7 +145,10 @@ func Test_cancelOfUnexposedOrder(t *testing.T) {
 }
 
 func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
-	parentOrderUpdatesChan, childOrderOutboundParams, cancelOrderOutboundParams, childOrdersIn, sendChildQty, listing, om, doneChan := setupStrategy(ExecuteAsDmaStrategy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	parentOrderUpdatesChan, childOrderOutboundParams, cancelOrderOutboundParams, childOrdersIn, sendChildQty, listing, om, doneChan := setupStrategy(ctx, ExecuteAsDmaStrategy)
 
 	params1 := &api.CreateAndRouteOrderParams{
 		OrderSide:     model.Side_BUY,
@@ -229,9 +241,11 @@ func Test_cancelOfPartiallyExposedOrder(t *testing.T) {
 }
 
 func TestStrategyCompletesWhenChildOrdersFilled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	parentOrderUpdatesChan, _, _, childOrdersIn, _,
-	listing, om, doneChan, child1Id, child2Id := setupStrategyAndSendTwoChildOrders(t)
+		listing, om, doneChan, child1Id, child2Id := setupStrategyAndSendTwoChildOrders(ctx, t)
 
 	childOrdersIn <- &model.Order{
 		Id:                child1Id,
@@ -279,13 +293,13 @@ func TestStrategyCompletesWhenChildOrdersFilled(t *testing.T) {
 
 }
 
-func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan chan model.Order, childOrderOutboundParams chan paramsAndId,
+func setupStrategyAndSendTwoChildOrders(ctx context.Context, t *testing.T) (parentOrderUpdatesChan chan model.Order, childOrderOutboundParams chan paramsAndId,
 	childOrderCancelParams chan *api.CancelOrderParams, childOrdersIn chan *model.Order,
 	sendChildQty chan *model.Decimal64, listing *model.Listing,
 	om *Strategy, doneChan chan string, child1Id string, child2Id string) {
 
 	parentOrderUpdatesChan, childOrderOutboundParams, childOrderCancelParams, childOrdersIn, sendChildQty, listing,
-		om, doneChan = setupStrategy(ExecuteAsDmaStrategy)
+		om, doneChan = setupStrategy(ctx, ExecuteAsDmaStrategy)
 
 	<-parentOrderUpdatesChan
 
@@ -368,7 +382,7 @@ func setupStrategyAndSendTwoChildOrders(t *testing.T) (parentOrderUpdatesChan ch
 		listing, om, doneChan, child1Id, child2Id
 }
 
-func setupStrategy(strategy func(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing)) (parentOrderUpdatesChan chan model.Order, childOrderOutboundParamsChan chan paramsAndId,
+func setupStrategy(ctx context.Context, strategy func(ctx context.Context, om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing)) (parentOrderUpdatesChan chan model.Order, childOrderOutboundParamsChan chan paramsAndId,
 	childOrderCancelParamsChan chan *api.CancelOrderParams, childOrdersIn chan *model.Order,
 	sendChildQty chan *model.Decimal64, listing *model.Listing,
 	om *Strategy, doneChan chan string) {
@@ -404,7 +418,7 @@ func setupStrategy(strategy func(om *Strategy, sendChildQty chan *model.Decimal6
 		RootOriginatorId:   "",
 		RootOriginatorRef:  "",
 		ExecParametersJson: "",
-	}, "e1", func(o *model.Order) error {
+	}, "e1", func(ctx context.Context, o *model.Order) error {
 		parentOrderUpdatesChan <- *o
 		return nil
 	}, orderRouter, childOrderStream, doneChan)
@@ -413,28 +427,30 @@ func setupStrategy(strategy func(om *Strategy, sendChildQty chan *model.Decimal6
 	}
 
 	sendChildQty = make(chan *model.Decimal64)
-	strategy(om, sendChildQty, listing)
+	strategy(ctx, om, sendChildQty, listing)
 	return parentOrderUpdatesChan, childOrderOutboundParamsChan, childOrderCancelParamsChan, childOrdersIn, sendChildQty, listing, om, doneChan
 }
 
-func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {
+func ExecuteAsDmaStrategy(ctx context.Context, om *Strategy, sendChildQty chan *model.Decimal64, listing *model.Listing) {
 
 	if om.ParentOrder.GetTargetStatus() == model.OrderStatus_LIVE {
 		om.ParentOrder.SetStatus(model.OrderStatus_LIVE)
 	}
 	go func() {
 		for {
-			done, err := om.CheckIfDone()
+			done, err := om.CheckIfDone(ctx)
 			if err != nil {
-				om.ErrLog.Printf("failed to check if done, cancelling order:%v", err)
+				om.Log.Error("failed to check if done, cancelling order", "error", err)
 				om.CancelChan <- ""
 			}
 
 			if done {
-				break
+				return
 			}
 
 			select {
+			case <-ctx.Done():
+				return
 			case errMsg := <-om.CancelChan:
 				if errMsg != "" {
 					om.ParentOrder.ErrorMessage = errMsg
@@ -445,7 +461,13 @@ func ExecuteAsDmaStrategy(om *Strategy, sendChildQty chan *model.Decimal64, list
 					log.Panicf("failed to Cancel order:%v", err)
 				}
 			case co, ok := <-om.ChildOrderUpdateChan:
-				om.OnChildOrderUpdate(ok, co)
+				if ok {
+					om.OnChildOrderUpdate(ok, co)
+				} else {
+					msg := "child order update chan unexpectedly closed, cancelling order"
+					om.Log.Info(msg)
+					om.CancelChan <- msg
+				}
 			case q := <-sendChildQty:
 				om.SendChildOrder(om.ParentOrder.Side, q, om.ParentOrder.Price, listing.Id, listing.GetMarket().Mic, "")
 			}
@@ -522,7 +544,7 @@ type testChildOrderStream struct {
 	stream chan *model.Order
 }
 
-func (t testChildOrderStream) GetStream() <-chan *model.Order {
+func (t testChildOrderStream) Chan() <-chan *model.Order {
 	return t.stream
 }
 

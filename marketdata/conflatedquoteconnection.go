@@ -7,6 +7,8 @@ import (
 	"log/slog"
 )
 
+// ConflatedQuoteStream conflates quotes from a quote stream such that the most recent quote for a listing is read from
+// the stream even if the client is reading quotes at a slower rate than they are being published.
 type ConflatedQuoteStream struct {
 	id                 string
 	maxSubscriptions   int

@@ -1,4 +1,4 @@
-// Types and functions to be used to create execution trading strategies.  To understand how to use the code in this
+// Package strategy contains types and functions to be used to create execution trading strategies.  To understand how to use the code in this
 // package see the examples strategies at https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/smart-router
 // and https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/vwap-strategy.
 package strategy
@@ -11,51 +11,50 @@ import (
 	"github.com/ettec/otp-common/model"
 	"github.com/ettec/otp-common/ordermanagement"
 	"github.com/golang/protobuf/proto"
-	"log"
-	"os"
+	"log/slog"
 )
 
-// See the examples referenced in the package doc to see how to make use of this to write a new strategy type.
+// Strategy is a base type to be used to build trading strategies.  For examples see
+// https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/smart-router
+// and https://github.com/ettec/open-trading-platform/tree/master/go/execution-venues/vwap-strategy.
 type Strategy struct {
 	// This channel must be checked and handled as part of the select statement in the strategies event loop
-	CancelChan           chan string
+	CancelChan chan string
 
 	// This channel must be checked and handled as part of the select statement in the strategies event loop
 	ChildOrderUpdateChan <-chan *model.Order
 
 	ExecVenueId      string
 	ParentOrder      *ordermanagement.ParentOrder
-	ErrLog           *log.Logger
-	Log              *log.Logger
 	lastStoredOrder  []byte
-	store            func(*model.Order) error
+	store            func(context.Context, *model.Order) error
 	orderRouter      executionvenue.ExecutionVenueClient
-	childOrderStream ordermanagement.ChildOrderStream
+	childOrderStream ordermanagement.OrderStream
+
+	Log *slog.Logger
 
 	doneChan chan<- string
 }
 
 func NewStrategyFromCreateParams(parentOrderId string, params *executionvenue.CreateAndRouteOrderParams, execVenueId string,
-	store func(*model.Order) error, orderRouter executionvenue.ExecutionVenueClient,
-	childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) (*Strategy, error) {
+	store func(context.Context, *model.Order) error, orderRouter executionvenue.ExecutionVenueClient,
+	childOrderStream ordermanagement.OrderStream, doneChan chan<- string) (*Strategy, error) {
 
 	initialState := model.NewOrder(parentOrderId, params.OrderSide, params.Quantity, params.Price, params.ListingId,
 		params.OriginatorId, params.OriginatorRef, params.RootOriginatorId, params.RootOriginatorRef, params.Destination)
 
-	err := initialState.SetTargetStatus(model.OrderStatus_LIVE)
+	if err := initialState.SetTargetStatus(model.OrderStatus_LIVE); err != nil {
+		return nil, fmt.Errorf("failed to set initial order state to live: %w", err)
+	}
 
 	initialState.ExecParametersJson = params.ExecParametersJson
 
-	if err != nil {
-		return nil, err
-	}
-
-	om := NewStrategyFromParentOrder(initialState, store, execVenueId, orderRouter, childOrderStream, doneChan)
-	return om, nil
+	return NewStrategyFromParentOrder(initialState, store, execVenueId, orderRouter, childOrderStream, doneChan), nil
 }
 
-func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Order) error, execVenueId string, orderRouter executionvenue.ExecutionVenueClient, childOrderStream ordermanagement.ChildOrderStream, doneChan chan<- string) *Strategy {
+func NewStrategyFromParentOrder(initialState *model.Order, store func(context.Context, *model.Order) error, execVenueId string, orderRouter executionvenue.ExecutionVenueClient, childOrderStream ordermanagement.OrderStream, doneChan chan<- string) *Strategy {
 	po := ordermanagement.NewParentOrder(*initialState)
+
 	return &Strategy{
 		lastStoredOrder:      nil,
 		CancelChan:           make(chan string, 10),
@@ -64,13 +63,11 @@ func NewStrategyFromParentOrder(initialState *model.Order, store func(*model.Ord
 		ExecVenueId:          execVenueId,
 		orderRouter:          orderRouter,
 		childOrderStream:     childOrderStream,
-		ChildOrderUpdateChan: childOrderStream.GetStream(),
+		ChildOrderUpdateChan: childOrderStream.Chan(),
 		doneChan:             doneChan,
-		ErrLog:               log.New(os.Stderr, "order:"+po.Id+" ", log.Flags()),
-		Log:                  log.New(log.Writer(), "order:"+po.Id+" ", log.Flags()),
+		Log:                  slog.Default().With("order", po.Id),
 	}
 }
-
 
 // SendChildOrder Sends a child order to the given destination and ensures the parent order cannot become over exposed.
 func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, price *model.Decimal64, listingId int32,
@@ -82,15 +79,15 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 	}
 
 	params := &executionvenue.CreateAndRouteOrderParams{
-		OrderSide:         side,
-		Quantity:          quantity,
-		Price:             price,
-		ListingId:         listingId,
-		Destination:       destination,
-		OriginatorId:      om.ExecVenueId,
-		OriginatorRef:     om.getStrategyOrderId(),
-		RootOriginatorId:  om.ParentOrder.RootOriginatorId,
-		RootOriginatorRef: om.ParentOrder.RootOriginatorRef,
+		OrderSide:          side,
+		Quantity:           quantity,
+		Price:              price,
+		ListingId:          listingId,
+		Destination:        destination,
+		OriginatorId:       om.ExecVenueId,
+		OriginatorRef:      om.getStrategyOrderId(),
+		RootOriginatorId:   om.ParentOrder.RootOriginatorId,
+		RootOriginatorRef:  om.ParentOrder.RootOriginatorRef,
 		ExecParametersJson: execParametersJson,
 	}
 
@@ -106,19 +103,17 @@ func (om *Strategy) SendChildOrder(side model.Side, quantity *model.Decimal64, p
 	// Orders start at version 0, this is a placeholder for the pending order until the first child order update is received
 	pendingOrder.Version = -1
 
-	_, err = om.ParentOrder.OnChildOrderUpdate(pendingOrder)
-	if err != nil {
-		return err
+	if err = om.ParentOrder.OnChildOrderUpdate(pendingOrder); err != nil {
+		return fmt.Errorf("failed to update parent order %s with pending child order:%w", om.ParentOrder.Id, err)
 	}
 
 	return nil
 }
 
-
 // CheckIfDone must be called in the strategies event handling loop, see example strategies as per package documentation.
-func (om *Strategy) CheckIfDone() (done bool, err error) {
+func (om *Strategy) CheckIfDone(ctx context.Context) (done bool, err error) {
 	done = false
-	err = om.persistParentOrderChanges()
+	err = om.persistParentOrderChanges(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to persist parent order changes:%w", err)
 	}
@@ -132,13 +127,14 @@ func (om *Strategy) CheckIfDone() (done bool, err error) {
 }
 
 // OnChildOrderUpdate must be called in response to receipt of a child order update in the strategy's event processing loop as per example strategies
-func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
-	if ok {
-		_, err := om.ParentOrder.OnChildOrderUpdate(co)
-		return err
+func (om *Strategy) OnChildOrderUpdate(childUpdatesChannelOpen bool, co *model.Order) error {
+	if childUpdatesChannelOpen {
+		if err := om.ParentOrder.OnChildOrderUpdate(co); err != nil {
+			return fmt.Errorf("failed to update parent order %s with child order %s update:%w", om.ParentOrder.Id, co.Id, err)
+		}
 	} else {
 		msg := "child order update chan unexpectedly closed, cancelling order"
-		om.ErrLog.Printf(msg)
+		om.Log.Info(msg)
 		om.CancelChan <- msg
 	}
 
@@ -148,7 +144,7 @@ func (om *Strategy) OnChildOrderUpdate(ok bool, co *model.Order) error {
 // CancelChildOrdersAndStrategyOrder should only be called from with the strategy's event processing loop as per the example strategies
 func (om *Strategy) CancelChildOrdersAndStrategyOrder() error {
 	if !om.ParentOrder.IsTerminalState() {
-		om.Log.Print("cancelling order")
+		om.Log.Info("cancelling order")
 		err := om.ParentOrder.SetTargetStatus(model.OrderStatus_CANCELLED)
 
 		if err != nil {
@@ -160,9 +156,9 @@ func (om *Strategy) CancelChildOrdersAndStrategyOrder() error {
 			if !co.IsTerminalState() {
 				pendingChildOrderCancels = true
 				_, err := om.orderRouter.CancelOrder(context.Background(), &executionvenue.CancelOrderParams{
-					OrderId: co.Id,
+					OrderId:   co.Id,
 					ListingId: co.ListingId,
-					OwnerId: co.OwnerId,
+					OwnerId:   co.OwnerId,
 				})
 
 				if err != nil {
@@ -186,8 +182,7 @@ func (om *Strategy) CancelChildOrdersAndStrategyOrder() error {
 	return nil
 }
 
-
-func (om *Strategy) persistParentOrderChanges() error {
+func (om *Strategy) persistParentOrderChanges(ctx context.Context) error {
 
 	orderAsBytes, err := proto.Marshal(&om.ParentOrder.Order)
 
@@ -199,22 +194,19 @@ func (om *Strategy) persistParentOrderChanges() error {
 
 		toStore, err := proto.Marshal(&om.ParentOrder.Order)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to marshal order:%w", err)
 		}
 
 		om.lastStoredOrder = toStore
 
 		orderCopy := &model.Order{}
-		err = proto.Unmarshal(toStore, orderCopy)
-		if err != nil {
-			return err
+		if err = proto.Unmarshal(toStore, orderCopy); err != nil {
+			return fmt.Errorf("failed to unmarshal order:%w", err)
 		}
 
-		err = om.store(orderCopy)
-		if err != nil {
-			return err
+		if err = om.store(ctx, orderCopy); err != nil {
+			return fmt.Errorf("failed to store order:%w", err)
 		}
-
 	}
 
 	return err
@@ -223,4 +215,3 @@ func (om *Strategy) persistParentOrderChanges() error {
 func (om *Strategy) getStrategyOrderId() string {
 	return om.ParentOrder.GetId()
 }
-

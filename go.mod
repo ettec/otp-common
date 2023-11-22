@@ -21,6 +21,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d // indirect
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/gofuzz v1.0.0 // indirect
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
@@ -34,11 +35,14 @@ require (
 	github.com/prometheus/procfs v0.1.3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975 // indirect
-	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9 // indirect
+	golang.org/x/mod v0.4.2 // indirect
+	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45 // indirect
-	golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1 // indirect
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
+	golang.org/x/text v0.3.3 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
+	golang.org/x/tools v0.1.1 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55 // indirect
 	google.golang.org/protobuf v1.23.0 // indirect

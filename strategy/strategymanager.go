@@ -7,46 +7,45 @@ import (
 	"github.com/ettec/otp-common/bootstrap"
 	"github.com/ettec/otp-common/model"
 	"github.com/ettec/otp-common/ordermanagement"
-	"github.com/ettec/otp-common/orderstore"
 	"github.com/google/uuid"
-	"log"
+	"log/slog"
 	"sync"
 )
 
-
-
-
-
-type ChildOrderUpdates interface {
-	Start()
-	NewOrderStream(parentOrderId string, bufferSize int) ordermanagement.ChildOrderStream
+type childOrderUpdates interface {
+	Start(ctx context.Context)
+	GetChildOrderStream(parentOrderId string, bufferSize int) ordermanagement.OrderStream
 }
 
+type orderStore interface {
+	Write(ctx context.Context, order *model.Order) error
+	LoadOrders(ctx context.Context, loadOrder func(order *model.Order) bool) (map[string]*model.Order, error)
+	Close()
+}
 
-
-type strategyManager struct {
-	id                string
-	store             orderstore.OrderStore
-	orderRouter       executionvenue.ExecutionVenueClient
-	doneChan          chan string
-	orders            sync.Map
-	childOrderUpdates ChildOrderUpdates
-	executeFn         func(om *Strategy)
+// Manager is responsible for the creation and recovery of new strategy instances and for forwarding requests
+// to a strategy service to the target strategy.
+type Manager struct {
+	id                            string
+	store                         orderStore
+	orderRouter                   executionvenue.ExecutionVenueClient
+	doneChan                      chan string
+	orders                        sync.Map
+	childOrderUpdates             childOrderUpdates
+	executeFn                     func(om *Strategy)
 	inboundChildUpdatesBufferSize int
 }
 
-// StrategyManager is responsible for the creation and recovery of new strategy instances and for forwarding requests
-// to a strategy service to the target strategy.
-func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, childOrderUpdates ChildOrderUpdates,
-	orderRouter executionvenue.ExecutionVenueClient, executeFn func(om *Strategy)) *strategyManager {
+func NewStrategyManager(ctx context.Context, id string, parentOrderStore orderStore, childOrderUpdates childOrderUpdates,
+	orderRouter executionvenue.ExecutionVenueClient, executeFn func(om *Strategy)) (*Manager, error) {
 
-	sm := &strategyManager{
-		id:                id,
-		store:             parentOrderStore,
-		orderRouter:       orderRouter,
-		doneChan:          make(chan string, 100),
-		orders:            sync.Map{},
-		childOrderUpdates: childOrderUpdates,
+	sm := &Manager{
+		id:                            id,
+		store:                         parentOrderStore,
+		orderRouter:                   orderRouter,
+		doneChan:                      make(chan string, 100),
+		orders:                        sync.Map{},
+		childOrderUpdates:             childOrderUpdates,
 		inboundChildUpdatesBufferSize: bootstrap.GetOptionalIntEnvVar("STRATEGYMANAGER_INBOUND_CHILD_UPDATES_BUFFER_SIZE", 1000),
 	}
 
@@ -55,21 +54,21 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 	go func() {
 		id := <-sm.doneChan
 		sm.orders.Delete(id)
-		log.Printf("order %v done", id)
+		slog.Info("order done", "id", id)
 	}()
 
-	parentOrders, err := sm.store.RecoverInitialCache(func(o *model.Order) bool {
+	parentOrders, err := sm.store.LoadOrders(ctx, func(o *model.Order) bool {
 		return o.OwnerId == id
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to recover initial orders: %w", err)
 	}
 
 	for _, order := range parentOrders {
 		if !order.IsTerminalState() {
 
 			om := NewStrategyFromParentOrder(order, sm.store.Write, sm.id, sm.orderRouter,
-				sm.childOrderUpdates.NewOrderStream(order.Id, sm.inboundChildUpdatesBufferSize ),
+				sm.childOrderUpdates.GetChildOrderStream(order.Id, sm.inboundChildUpdatesBufferSize),
 				sm.doneChan)
 			sm.orders.Store(om.getStrategyOrderId(), om)
 
@@ -77,26 +76,26 @@ func NewStrategyManager(id string, parentOrderStore orderstore.OrderStore, child
 		}
 	}
 
-	sm.childOrderUpdates.Start()
-	return sm
+	sm.childOrderUpdates.Start(ctx)
+	return sm, nil
 }
 
-func (s *strategyManager) GetExecutionParametersMetaData(_ context.Context, empty *model.Empty) (*executionvenue.ExecParamsMetaDataJson, error) {
+func (s *Manager) GetExecutionParametersMetaData(_ context.Context, empty *model.Empty) (*executionvenue.ExecParamsMetaDataJson, error) {
 	return nil, fmt.Errorf("not implemented for strategy manager")
 }
 
-func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executionvenue.CreateAndRouteOrderParams) (*executionvenue.OrderId, error) {
+func (s *Manager) CreateAndRouteOrder(_ context.Context, params *executionvenue.CreateAndRouteOrderParams) (*executionvenue.OrderId, error) {
 
 	id, err := uuid.NewUUID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create unique id:%w", err)
 	}
 
 	om, err := NewStrategyFromCreateParams(id.String(), params, s.id, s.store.Write, s.orderRouter,
-		s.childOrderUpdates.NewOrderStream(id.String(), s.inboundChildUpdatesBufferSize), s.doneChan)
+		s.childOrderUpdates.GetChildOrderStream(id.String(), s.inboundChildUpdatesBufferSize), s.doneChan)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create strategy from parameters: %w", err)
 	}
 
 	s.orders.Store(om.getStrategyOrderId(), om)
@@ -108,11 +107,11 @@ func (s *strategyManager) CreateAndRouteOrder(_ context.Context, params *executi
 	}, nil
 }
 
-func (s *strategyManager) ModifyOrder(_ context.Context, _ *executionvenue.ModifyOrderParams) (*model.Empty, error) {
+func (s *Manager) ModifyOrder(_ context.Context, _ *executionvenue.ModifyOrderParams) (*model.Empty, error) {
 	return nil, fmt.Errorf("order modification not supported")
 }
 
-func (s *strategyManager) CancelOrder(_ context.Context, params *executionvenue.CancelOrderParams) (*model.Empty, error) {
+func (s *Manager) CancelOrder(_ context.Context, params *executionvenue.CancelOrderParams) (*model.Empty, error) {
 
 	if val, exists := s.orders.Load(params.OrderId); exists {
 		om := val.(*Strategy)

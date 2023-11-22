@@ -11,7 +11,7 @@ func init() {
 	zero = &model.Decimal64{}
 }
 
-// ParentOrder has a one to many relationship to its child orders.  The parent aggregates and summarises state across
+// ParentOrder has a one-to-many relationship to its child orders.  The parent order aggregates and summarises state across
 // its children.
 type ParentOrder struct {
 	model.Order
@@ -20,7 +20,6 @@ type ParentOrder struct {
 	childOrderRefs       map[string]model.Ref
 	childOrdersRecovered bool
 }
-
 
 func NewParentOrder(order model.Order) *ParentOrder {
 
@@ -38,7 +37,7 @@ func NewParentOrder(order model.Order) *ParentOrder {
 	}
 }
 
-func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) (bool, error) {
+func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) error {
 
 	po.ChildOrders[childOrder.Id] = childOrder
 
@@ -68,7 +67,8 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) (bool, error)
 
 	if ref, exists := po.childOrderRefs[childOrder.Id]; exists {
 		if childOrder.Version <= ref.Version {
-			return po.childOrdersRecovered, nil
+			// Ignore this child order update as it is before the latest referenced version
+			return nil
 		} else {
 			newRef := model.Ref{Id: childOrder.Id, Version: childOrder.Version}
 			po.childOrderRefs[childOrder.Id] = newRef
@@ -91,7 +91,7 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) (bool, error)
 	if newExecution != nil {
 		err := po.AddExecution(*newExecution)
 		if err != nil {
-			return false, err
+			return fmt.Errorf("failed to add execution to parent order %s:%w", po.Id, err)
 		}
 	}
 
@@ -108,13 +108,11 @@ func (po *ParentOrder) OnChildOrderUpdate(childOrder *model.Order) (bool, error)
 
 	if po.GetTargetStatus() == model.OrderStatus_CANCELLED {
 		if po.GetExposedQuantity().Equal(zero) {
-			err := po.SetStatus(model.OrderStatus_CANCELLED)
-			if err != nil {
-				return false, fmt.Errorf("failed to parent order status to cancelld:%w",err)
+			if err := po.SetStatus(model.OrderStatus_CANCELLED); err != nil {
+				return fmt.Errorf("failed to set parent order %s status to cancelled: %w", po.Id, err)
 			}
 		}
 	}
 
-	return po.childOrdersRecovered, nil
-
+	return nil
 }

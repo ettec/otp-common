@@ -55,7 +55,7 @@ func (t testReader) ReadMessage(ctx context.Context) (kafka.Message, error) {
 	return <-t.msgs, nil
 }
 
-func Test_getChildOrdersFromReader(t *testing.T) {
+func TestGetChildOrdersFromReader(t *testing.T) {
 
 	now := time.Now()
 	afterNow := now.Add(20 * time.Minute)
@@ -120,7 +120,7 @@ func Test_getChildOrdersFromReader(t *testing.T) {
 		panic(err)
 	}
 
-	updates, err := getChildOrdersFromReader(id, tr)
+	updates, err := getChildOrdersFromReader(context.Background(), id, tr, 100)
 	if err != nil {
 		panic(err)
 	}

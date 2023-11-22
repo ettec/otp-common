@@ -1,9 +1,91 @@
 package ordermanagement
 
 import (
+	"context"
 	"github.com/ettec/otp-common/model"
-	"log"
+	"log/slog"
 )
+
+type childOrderSubscriptionRequest struct {
+	parentOrderId string
+	orderChan     chan *model.Order
+}
+
+type OrderStream interface {
+	Chan() <-chan *model.Order
+	Close()
+}
+
+// childOrderUpdatesDistributor is used to subscribe to child order updates for a given parent order id.
+type childOrderUpdatesDistributor struct {
+	subscribeChan         chan childOrderSubscriptionRequest
+	unsubscribeChan       chan string
+	childOrderUpdatesChan <-chan ChildOrder
+}
+
+func NewChildOrderUpdatesDistributor(updates <-chan ChildOrder, initialSubscriptionsBufferSize int) *childOrderUpdatesDistributor {
+
+	d := &childOrderUpdatesDistributor{
+		subscribeChan:         make(chan childOrderSubscriptionRequest, initialSubscriptionsBufferSize),
+		unsubscribeChan:       make(chan string, initialSubscriptionsBufferSize),
+		childOrderUpdatesChan: updates,
+	}
+
+	return d
+}
+
+func (d *childOrderUpdatesDistributor) GetChildOrderStream(parentOrderId string, bufferSize int) OrderStream {
+	return newChildOrderStream(parentOrderId, bufferSize, d)
+}
+
+func (d *childOrderUpdatesDistributor) Start(ctx context.Context) {
+	parentIdToChan := map[string]chan *model.Order{}
+
+	go func() {
+		defer func() {
+			for _, c := range parentIdToChan {
+				close(c)
+			}
+		}()
+
+	initialSubscriptionsLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case subscriptionRequest := <-d.subscribeChan:
+				parentIdToChan[subscriptionRequest.parentOrderId] = subscriptionRequest.orderChan
+			default:
+				break initialSubscriptionsLoop
+			}
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case u := <-d.childOrderUpdatesChan:
+				if orderChan, ok := parentIdToChan[u.ParentOrderId]; ok {
+					select {
+					case orderChan <- u.Child:
+					default:
+						slog.Warn("slow consumer, closing child order update channel", "parentOrderId", u.ParentOrderId)
+						close(orderChan)
+						delete(parentIdToChan, u.ParentOrderId)
+					}
+
+				}
+			case subscriptionRequest := <-d.subscribeChan:
+				parentIdToChan[subscriptionRequest.parentOrderId] = subscriptionRequest.orderChan
+			case parentId := <-d.unsubscribeChan:
+				updateChan := parentIdToChan[parentId]
+				delete(parentIdToChan, parentId)
+				close(updateChan)
+			}
+		}
+
+	}()
+}
 
 type childOrderStream struct {
 	parentOrderId string
@@ -13,94 +95,17 @@ type childOrderStream struct {
 
 func newChildOrderStream(parentOrderId string, bufferSize int, d *childOrderUpdatesDistributor) *childOrderStream {
 	stream := &childOrderStream{parentOrderId: parentOrderId, orderChan: make(chan *model.Order, bufferSize), distributor: d}
-	d.openOrderChan <- parentIdAndChan{
-		parentId:  parentOrderId,
-		orderChan: stream.orderChan,
+	d.subscribeChan <- childOrderSubscriptionRequest{
+		parentOrderId: parentOrderId,
+		orderChan:     stream.orderChan,
 	}
 	return stream
 }
 
-func (c *childOrderStream) GetStream() <-chan *model.Order {
+func (c *childOrderStream) Chan() <-chan *model.Order {
 	return c.orderChan
 }
 
 func (c *childOrderStream) Close() {
-	c.distributor.closeOrderChan <- c.parentOrderId
-}
-
-type parentIdAndChan struct {
-	parentId  string
-	orderChan chan *model.Order
-}
-
-type childOrderUpdatesDistributor struct {
-	openOrderChan  chan parentIdAndChan
-	closeOrderChan chan string
-	startChan      chan bool
-}
-
-type ChildOrderStream interface {
-	GetStream() <-chan *model.Order
-	Close()
-}
-
-func (d *childOrderUpdatesDistributor) NewOrderStream(parentOrderId string, bufferSize int) ChildOrderStream {
-	return newChildOrderStream(parentOrderId, bufferSize, d)
-}
-
-// A child order updates distributor is used to fan out updates to parent orders.
-func NewChildOrderUpdatesDistributor(updates <-chan ChildOrder) *childOrderUpdatesDistributor {
-
-	idToChan := map[string]chan *model.Order{}
-
-	d := &childOrderUpdatesDistributor{
-		openOrderChan:  make(chan parentIdAndChan),
-		closeOrderChan: make(chan string),
-		startChan:      make(chan bool),
-	}
-
-	go func() {
-
-	subscribeLoop:
-		for {
-			select {
-			case <-d.startChan:
-				break subscribeLoop
-			case o := <-d.openOrderChan:
-				idToChan[o.parentId] = o.orderChan
-			case c := <-d.closeOrderChan:
-				delete(idToChan, c)
-
-			}
-		}
-
-		for {
-			select {
-			case u := <-updates:
-				if orderChan, ok := idToChan[u.ParentOrderId]; ok {
-					select {
-					case orderChan <- u.Child:
-					default:
-						log.Printf("slow consumer, closing child order update channel, parent order id %v", u.ParentOrderId)
-						close(orderChan)
-						delete(idToChan, u.ParentOrderId)
-					}
-
-				}
-			case o := <-d.openOrderChan:
-				idToChan[o.parentId] = o.orderChan
-			case pId := <-d.closeOrderChan:
-				updateChan := idToChan[pId]
-				delete(idToChan, pId)
-				close(updateChan)
-			}
-		}
-
-	}()
-
-	return d
-}
-
-func (d *childOrderUpdatesDistributor) Start() {
-	d.startChan <- true
+	c.distributor.unsubscribeChan <- c.parentOrderId
 }

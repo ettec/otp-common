@@ -2,7 +2,7 @@ package model
 
 import "testing"
 
-var tickSizeTable  = &TickSizeTable{
+var tickSizeTable = &TickSizeTable{
 	Entries: []*TickSizeEntry{
 		{
 			LowerPriceBound: &Decimal64{Mantissa: -100, Exponent: 0},
@@ -62,7 +62,6 @@ func TestListing_GetTickSizeForPriceLevel(t *testing.T) {
 
 		})
 	}
-
 
 }
 

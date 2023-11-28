@@ -98,7 +98,7 @@ func (ks *KafkaStore) SubscribeToAllOrders(ctx context.Context, createdAfter tim
 		return nil, nil, fmt.Errorf("failed to restore order state from store: %w", err)
 	}
 
-	outChan := make(chan<- *model.Order, bufferSize)
+	outChan := make(chan *model.Order, bufferSize)
 	go func() {
 		defer func() {
 			close(outChan)
@@ -107,7 +107,7 @@ func (ks *KafkaStore) SubscribeToAllOrders(ctx context.Context, createdAfter tim
 			}
 		}()
 		for {
-			msg, err := reader.ReadMessage(context.Background())
+			msg, err := reader.ReadMessage(ctx)
 			if err != nil {
 				slog.Error("failed to read message", "error", err)
 				return
@@ -123,7 +123,7 @@ func (ks *KafkaStore) SubscribeToAllOrders(ctx context.Context, createdAfter tim
 		}
 	}()
 
-	return initialState, nil, nil
+	return initialState, outChan, nil
 
 }
 

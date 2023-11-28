@@ -17,7 +17,7 @@ import (
 	"strconv"
 )
 
-func GetServiceAddress( appLabel string) (string, error) {
+func GetServiceAddress(appLabel string) (string, error) {
 	clientSet := GetK8sClientSet(false)
 
 	namespace := "default"
@@ -27,7 +27,7 @@ func GetServiceAddress( appLabel string) (string, error) {
 	})
 
 	if err != nil {
-		return "",  err
+		return "", err
 	}
 
 	if len(list.Items) != 1 {
@@ -48,9 +48,8 @@ func GetServiceAddress( appLabel string) (string, error) {
 	}
 
 	targetAddress := service.Name + ":" + strconv.Itoa(int(podPort))
-	return targetAddress,  nil
+	return targetAddress, nil
 }
-
 
 func GetK8sClientSet(external bool) *kubernetes.Clientset {
 	var clientSet *kubernetes.Clientset
